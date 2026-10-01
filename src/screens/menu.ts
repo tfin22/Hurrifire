@@ -25,6 +25,7 @@ export interface MenuActions {
 
 export class TitleScreen implements Screen {
   touchMode = 'menu' as const;
+  music = 'title' as const;
   private t = 0;
   private cam = new Camera();
   private r3d = new Renderer3D();

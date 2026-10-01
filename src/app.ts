@@ -3,6 +3,10 @@
 
 import { FixedLoop } from './core/loop';
 import { loadSettings, saveSettings, Settings } from './core/settings';
+import { Paula } from './audio/paula';
+import { DEBRIEF_SONG, TITLE_SONG } from './content/music';
+
+const songFor = (m: 'title' | 'debrief' | undefined) => (m === 'title' ? TITLE_SONG : m === 'debrief' ? DEBRIEF_SONG : null);
 import { ContextButton, GamepadSource, haptics, Keyboard, TiltSource, TouchControls, TouchMode } from './input/devices';
 import { InputState } from './input/input';
 import { Display, noEffects, ScreenEffects } from './render/display';
@@ -21,6 +25,8 @@ export interface Screen {
   /** Time compression. */
   ticksPerStep?(): number;
   contextButtons?(): ContextButton[];
+  /** Music for this screen (none in flight). */
+  music?: 'title' | 'debrief';
   /** Centre of the 3D view, for the G tunnel. */
   viewCentreY?(): number;
 }
@@ -41,8 +47,10 @@ export class App {
   readonly frameHooks: ((dt: number) => void)[] = [];
   /** Accumulated timings (ms) for profiling. */
   readonly perf = { sim: 0, render: 0, ticks: 0, frames: 0 };
-  /** One-shot sound effect by name; replaced by the audio engine when it starts. */
-  sound: (name: string, volume?: number, pitch?: number) => void = () => {};
+  /** The sound chip. Silent until the first touch or key (browsers insist). */
+  readonly audio = new Paula();
+  /** One-shot sound effect by name. */
+  sound = (name: string, volume = 1, pitch = 1): void => this.audio.play(name, volume * 0.9, pitch);
 
   constructor(canvas: HTMLCanvasElement, first: (app: App) => Screen) {
     this.canvas = canvas;
@@ -56,9 +64,14 @@ export class App {
     this.layout();
     window.addEventListener('resize', () => this.layout());
     window.addEventListener('orientationchange', () => setTimeout(() => this.layout(), 200));
+    this.audio.volume = this.settings.sound;
+    this.audio.musicOn = this.settings.music;
+    const wake = () => this.audio.start();
+    for (const ev of ['pointerdown', 'keydown', 'touchend']) window.addEventListener(ev, wake, { capture: true });
     this.screen = first(this);
     this.screen.enter?.();
     this.touch.setMode(this.screen.touchMode);
+    this.audio.music(songFor(this.screen.music));
 
     this.loop = new FixedLoop({
       ticksPerStep: () => this.screen.ticksPerStep?.() ?? 1,
@@ -82,11 +95,15 @@ export class App {
     s.enter?.();
     this.touch.setMode(s.touchMode);
     this.touch.setContext(s.contextButtons?.() ?? []);
+    this.audio.flight(null);
+    this.audio.music(songFor(s.music));
   }
 
   saveSettings(): void {
     saveSettings(this.settings);
     haptics.enabled = this.settings.haptics;
+    this.audio.setVolume(this.settings.sound);
+    if (this.audio.musicOn !== this.settings.music) this.audio.setMusicOn(this.settings.music, songFor(this.screen.music));
   }
 
   private frame(dt: number): void {

@@ -13,6 +13,7 @@ import { QuickCombatScreen } from './screens/quickCombat';
 import { CampaignBoardScreen, CampaignEndScreen, CampaignStartScreen, RosterScreen } from './screens/campaign';
 import { abortedSortie, applyAirfieldState, applySortie, nextSortieSpec } from './campaign/campaign';
 import type { SortieResult } from './sim/sortie';
+import { ReplayScreen } from './screens/replay';
 
 export class Flow {
   readonly game: Game;
@@ -68,12 +69,13 @@ export class Flow {
     const spec = nextSortieSpec(s, g.map, { convergenceM: this.app.settings.convergenceYards * 0.9144, assist: this.app.settings.assist });
     g.pilot.name = spec.playerName;
     this.app.setScreen(new DispersalScreen(this.app, g, spec, (sp) => this.fly(sp, {
-      done: (res) => {
+      done: (res, replay) => {
         const refly = res.outcome.pilot === 'lost' && !s.ironman;
         if (!refly) g.record(res);
         applySortie(s, res);
         g.saveCampaign();
-        this.app.setScreen(new DebriefScreen(this.app, res, () => this.board()));
+        const debrief: DebriefScreen = new DebriefScreen(this.app, res, () => this.board(), () => replay(() => this.app.setScreen(debrief)));
+        this.app.setScreen(debrief);
       },
       quit: () => {
         // Ironman: no walking away from a sortie that's going badly.
@@ -92,13 +94,23 @@ export class Flow {
     this.app.setScreen(new QuickCombatScreen(this.app, (cfg) => this.fly(this.game.quickCombatSpec(cfg, (Date.now() & 0x7fffffff) >>> 0)), () => this.toTitle()));
   }
 
-  fly(spec: SortieSpec, campaign?: { done: (r: SortieResult) => void; quit: () => void }): void {
+  fly(spec: SortieSpec, campaign?: { done: (r: SortieResult, replay: (back: () => void) => void) => void; quit: () => void }): void {
     if (!campaign) for (const af of this.game.map.airfields) { af.craters = []; af.damaged = 0; }
     const sortie = new Sortie(spec, this.game.map, this.game.objects);
-    this.app.setScreen(new SortieScreen(this.app, sortie, (res) => {
-      if (campaign) { campaign.done(res); return; }
+    const screen: SortieScreen = new SortieScreen(this.app, sortie, (res) => {
+      const replay = (back: () => void) => this.replay(sortie, screen, back);
+      if (campaign) { campaign.done(res, replay); return; }
       this.game.record(res);
-      this.app.setScreen(new DebriefScreen(this.app, res, () => this.app.setScreen(new LogbookScreen(this.app, this.game, () => this.toTitle()))));
-    }, () => (campaign ? campaign.quit() : this.toTitle())));
+      const debrief: DebriefScreen = new DebriefScreen(this.app, res, () => this.app.setScreen(new LogbookScreen(this.app, this.game, () => this.toTitle())), () => replay(() => this.app.setScreen(debrief)));
+      this.app.setScreen(debrief);
+    }, () => (campaign ? campaign.quit() : this.toTitle()));
+    this.app.setScreen(screen);
+  }
+
+  /** Re-run a finished sortie from its seed and recorded controls. */
+  private replay(sortie: Sortie, flown: SortieScreen, back: () => void): void {
+    sortie.rewind();
+    const again = new Sortie(sortie.spec, this.game.map, this.game.objects);
+    this.app.setScreen(new ReplayScreen(this.app, again, flown.recording, flown.world.autoRudder, back));
   }
 }

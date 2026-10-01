@@ -278,3 +278,28 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
 - **The docks plume** burns from 7 September: a column of smoke kilometres
   high above the Surrey and West India Docks, leaning downwind, visible
   from most of Kent. It is tallest in the first days.
+
+## Juice
+
+- **Sound** is built at startup from oscillators and seeded noise (about
+  20 ms), crushed to 8 bits at 11 kHz, and played through four channels
+  with Amiga-style panning and a 4.4 kHz low-pass for the LED filter. In
+  flight: engine, guns, one-shots, and wind or buffet. One-shots steal a
+  channel by priority, so an explosion can briefly drown the wind, as on
+  the real chip. The Merlin is a smooth, deep twelve; the DB 601 is
+  harder-edged and a different note.
+- **Music** is a tiny tracker: four channels, patterns written as
+  `note:length` lines, an order list, and synthesised instruments (pulse,
+  square, triangle, "brass", "flute", kick, snare). Two original tunes: a
+  march in D for the title and a quiet piece in D minor for the debrief.
+  None in flight, nor in the dispersal hut, which has the telephone and
+  the bell.
+- **Audio starts on the first touch or key**, because mobile browsers
+  insist. Until then everything is silent and nothing breaks.
+- **Replay** re-runs the sortie from its seed and the recorded control
+  frames (every discrete action is a command in the frame). A sortie
+  snapshots the shared map state (craters, wrecked hangars, balloons) when
+  it starts and can rewind it, so the replay starts from the same world.
+  Watch from the chase, fly-by, combat (over the shoulder towards the
+  nearest enemy) or cockpit cameras, follow any aircraft, and run at up to
+  the time-compression limit.

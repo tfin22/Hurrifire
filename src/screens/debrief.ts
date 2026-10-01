@@ -13,11 +13,12 @@ import { Menu, panel } from './ui';
 
 export class DebriefScreen implements Screen {
   touchMode = 'menu' as const;
+  music = 'debrief' as const;
   private t = 0;
   private lines: { text: string; c: number }[] = [];
   private scroll = 0;
 
-  constructor(private app: App, r: SortieResult, private next: () => void) {
+  constructor(private app: App, r: SortieResult, private next: () => void, private replay?: () => void) {
     const L = (text: string, c: number = C.CHALK) => this.lines.push({ text, c });
     L(`${r.date}.  ${r.aircraft}, ${r.durationMin} min.`, C.WHITE);
     if (r.takeoffDelay >= 0) L(`Airborne ${r.takeoffDelay} seconds after the scramble.`);
@@ -51,9 +52,11 @@ export class DebriefScreen implements Screen {
     const s = this.app.input;
     if (s.consume('down')) this.scroll++;
     if (s.consume('up')) this.scroll = Math.max(0, this.scroll - 1);
+    if (this.replay && s.consume('view1')) { this.replay(); return; }
     if (s.taps.length || s.consume('ok') || s.consume('back')) {
       const t = s.taps[0];
-      if (t && t.y > 200 && t.x < 160) this.scroll += 5;
+      if (t && t.y > 228 && t.x < 107 && this.replay) this.replay();
+      else if (t && t.y > 228 && t.x < 213) this.scroll += 5;
       else this.next();
     }
   }
@@ -69,7 +72,9 @@ export class DebriefScreen implements Screen {
     const max = 25;
     this.scroll = Math.min(this.scroll, Math.max(0, wrapped.length - max));
     wrapped.slice(this.scroll, this.scroll + max).forEach((l, i) => drawText(fb, l.text, 14, 88 + i * 6, l.c, 'tiny'));
-    drawTextCentered(fb, wrapped.length > max ? 'TAP LEFT: MORE   TAP RIGHT: LOGBOOK' : 'TAP FOR THE LOGBOOK', 160, 240, C.GREY_L, 'tiny');
+    if (this.replay) drawTextCentered(fb, 'REPLAY (V)', 53, 240, C.SIGHT, 'tiny');
+    if (wrapped.length > max) drawTextCentered(fb, 'MORE', 160, 240, C.GREY_L, 'tiny');
+    drawTextCentered(fb, 'CONTINUE', 266, 240, C.GREY_L, 'tiny');
   }
 
   effects(): ScreenEffects {
@@ -103,6 +108,7 @@ function drawOffice(fb: FrameBuffer): void {
 
 export class LogbookScreen implements Screen {
   touchMode = 'menu' as const;
+  music = 'debrief' as const;
   private page: number;
   constructor(private app: App, private game: Game, private next: () => void) {
     this.page = Math.max(0, Math.ceil(game.pilot.logbook.length / 6) - 1);
@@ -147,6 +153,7 @@ export class LogbookScreen implements Screen {
 
 export class SettingsScreen implements Screen {
   touchMode = 'menu' as const;
+  music = 'title' as const;
   private menu: Menu;
   constructor(private app: App, private next: () => void) {
     const st = app.settings;

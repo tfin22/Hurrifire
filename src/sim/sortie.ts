@@ -128,8 +128,16 @@ export class Sortie {
   /** Messages for the screen (start-up prompts etc.). */
   prompts: string[] = [];
   result: SortieResult | null = null;
+  /** Shared map state as it was at the start, so a replay can begin from the same place. */
+  private readonly startState: { craters: Airfield['craters'][]; damaged: number[]; balloonsDown: boolean[] };
+  private readonly wrecked: { kind: string }[] = [];
 
   constructor(readonly spec: SortieSpec, readonly map: WorldMap, readonly objects: WorldObjects) {
+    this.startState = {
+      craters: map.airfields.map((a) => a.craters.map((c) => ({ ...c }))),
+      damaged: map.airfields.map((a) => a.damaged),
+      balloonsDown: objects.balloons.map((b) => b.down),
+    };
     this.rng = new Rng(spec.seed ^ 0x5eed);
     const w = (this.world = new World(spec.seed, map));
     const wx = spec.weather;
@@ -433,10 +441,17 @@ export class Sortie {
       this.airfieldHits[af.name] = (this.airfieldHits[af.name] ?? 0) + 1;
       // Hangars near the burst are wrecked.
       for (const o of this.objects.near(pos.x, pos.z, 120)) {
-        if (o.kind === 'hangar' && o.pos.distTo(pos) < 60) o.kind = 'wreckedHangar';
+        if (o.kind === 'hangar' && o.pos.distTo(pos) < 60) { o.kind = 'wreckedHangar'; this.wrecked.push(o); }
       }
     }
     for (const s of this.ships) if (!s.sunk && Math.hypot(s.pos.x - pos.x, s.pos.z - pos.z) < 40) s.sunk = true;
+  }
+
+  /** Put the shared map back as it was when this sortie began (for a replay). */
+  rewind(): void {
+    this.map.airfields.forEach((a, i) => { a.craters = this.startState.craters[i].map((c) => ({ ...c })); a.damaged = this.startState.damaged[i]; });
+    this.objects.balloons.forEach((b, i) => { b.down = this.startState.balloonsDown[i]; });
+    for (const o of this.wrecked) o.kind = 'hangar';
   }
 
   // ------------------------------------------------------------ reckoning

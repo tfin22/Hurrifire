@@ -32,6 +32,7 @@ export interface NewCampaignChoice {
 /** Continue, or start again; and the choices for a new campaign. */
 export class CampaignStartScreen implements Screen {
   touchMode = 'menu' as const;
+  music = 'title' as const;
   private menu = new Menu([], 70, 70, 180, 15);
   private c: NewCampaignChoice = { surname: 'Fenwick', home: 'Biggin Hill', aircraft: 'hurricane', ironman: false };
   private confirm = false;
@@ -278,6 +279,7 @@ export class RosterScreen implements Screen {
 /** The end of the campaign: the score and the verdict. */
 export class CampaignEndScreen implements Screen {
   touchMode = 'menu' as const;
+  music = 'debrief' as const;
   private t = 0;
   constructor(private app: App, private s: CampaignState, private next: () => void) {}
 

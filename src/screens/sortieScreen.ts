@@ -29,6 +29,8 @@ export class SortieScreen extends FlightScreen {
   private rtAge = 99;
   private promptShown = 0;
   private finishing = -1;
+  /** Drop back to x1 when the enemy is near (not in a replay). */
+  protected dropCompression = true;
 
   constructor(app: App, readonly sortie: Sortie, private done: (r: SortieResult) => void, quit: () => void) {
     super(app, { world: sortie.world, terrain: sortie.map, onExit: quit });
@@ -52,15 +54,17 @@ export class SortieScreen extends FlightScreen {
     if (s.consume('start')) this.startPress();
     if (s.consume('primer')) this.cmd('primer');
     if (s.consume('mags')) this.cmd('mags');
-    if (s.consume('starter')) this.cmd('starter');
+    if (s.consume('starter')) { this.cmd('starter'); this.app.sound('starter'); }
     super.frame();
   }
 
   private startStep = 0;
   /** Assist: one START button; otherwise each press does the next step. */
   private startPress(): void {
-    if (this.app.settings.assist) { this.cmd('startAll'); return; }
-    this.cmd((['primer', 'mags', 'starter'] as const)[Math.min(2, this.startStep++)]);
+    if (this.app.settings.assist) { this.cmd('startAll'); this.app.sound('starter'); return; }
+    const step = (['primer', 'mags', 'starter'] as const)[Math.min(2, this.startStep++)];
+    this.cmd(step);
+    this.app.sound(step === 'starter' ? 'starter' : 'click');
   }
 
   tick(): void {
@@ -80,7 +84,7 @@ export class SortieScreen extends FlightScreen {
     this.rtAge += TUNING.sim.dt;
     while (this.promptShown < so.prompts.length) this.flashMessage(so.prompts[this.promptShown++], 2.5);
     // Anything hostile within visual range: back to x1.
-    if (this.timeIdx > 0 && this.world.tick % 10 === 0) {
+    if (this.dropCompression && this.timeIdx > 0 && this.world.tick % 10 === 0) {
       const me = this.player;
       for (const q of this.world.planes) {
         if (q.side !== me.side && q.alive && q.pos.distTo(me.pos) < TUNING.sim.compressionDropRange) { this.timeIdx = 0; break; }

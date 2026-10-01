@@ -17,6 +17,7 @@ const WINGMEN = [0, 2, 5, 11];
 
 export class QuickCombatScreen implements Screen {
   touchMode = 'menu' as const;
+  music = 'title' as const;
   private cfg: QuickCombatConfig = { playerType: 'spitfire', raid: 'bombers', escort: true, weather: 'cumulus', wingmen: 2 };
   private menu: Menu;
 

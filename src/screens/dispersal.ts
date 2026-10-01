@@ -77,8 +77,10 @@ export class DispersalScreen implements Screen {
     if (this.fade > 0 && this.leaving < 0) this.fade = Math.max(0, this.fade - 0.04);
     if (this.ringing < 0 && this.t >= this.ringAt) {
       this.ringing = this.t;
-      this.app.sound('bell');
+      this.app.sound('phone');
     }
+    // The telephone, then the bell as the orderly shouts.
+    if (this.ringing >= 0 && this.t - this.ringing === 40) this.app.sound('bell');
     if (this.ringing >= 0 && this.t - this.ringing > 50 * 2.5) this.leave();
     if (this.leaving >= 0) {
       this.fade = Math.min(1, (this.t - this.leaving) / 25);

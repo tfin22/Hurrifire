@@ -11,6 +11,7 @@ import { generateRaids, Sortie, SortieSpec } from '../src/sim/sortie';
 import { generateWeather } from '../src/sim/weather';
 import { skillFor } from '../src/sim/ai/types';
 import { applySortie, newCampaign, nextSortieSpec } from '../src/campaign/campaign';
+import type { ControlFrame } from '../src/input/input';
 
 const map = worldMap();
 const objects = new WorldObjects(map);
@@ -93,6 +94,28 @@ describe('a whole sortie', () => {
       expect(c.player.sorties).toBe(1);
       expect(c.roster.reduce((a, p) => a + p.sorties, 0)).toBeGreaterThanOrEqual(before + sp.others.length);
     }
+  }, 90000);
+
+  it('replays identically from the seed and the recorded controls, after a rewind', () => {
+    const sp = spec(8, { start: 'readiness', airStart: undefined, underAttack: true, raids: generateRaids(new Rng(8), 'airfields', map.airfieldByName('Biggin Hill')!, map, true, 1) });
+    const a = new Sortie(sp, map, objects);
+    const rng = new Rng(77);
+    const frames: ControlFrame[] = [];
+    const sig = (s: Sortie) => s.world.planes.map((p) => `${p.pos.x.toFixed(3)},${p.pos.y.toFixed(3)},${p.status},${p.damage.hits}`).join('|') + `#${s.world.bombs.length}`;
+    for (let i = 0; i < 50 * 300; i++) {
+      const f: ControlFrame = { pitch: Math.round(rng.signed() * 50) / 100, roll: Math.round(rng.signed() * 40) / 100, yaw: 0, throttle: i > 200 ? 1 : 0, fire: rng.chance(0.05), boost: false, brake: false, pump: false };
+      if (i === 5) f.cmds = ['startAll'];
+      if (i === 3000) f.cmds = ['gear'];
+      frames.push(f);
+      a.step(f);
+    }
+    const end = sig(a);
+    const craters = map.airfields.map((x) => x.craters.length).join(',');
+    a.rewind();
+    const b = new Sortie(sp, map, objects);
+    for (const f of frames) b.step(f);
+    expect(sig(b)).toBe(end);
+    expect(map.airfields.map((x) => x.craters.length).join(',')).toBe(craters);
   }, 90000);
 
   it('replays identically from the same seed', () => {

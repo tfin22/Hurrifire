@@ -27,7 +27,7 @@ import { TUNING } from '../tuning';
 
 const DEBUG_DAMAGE = ['GLYCOL', 'OIL', 'FIRE', 'AILERON', 'ELEVATOR', 'RUDDER', 'GEAR ONE', 'GEAR NONE', 'FLAPS', 'WOUND', 'SEIZE'];
 
-export type ViewMode = 'cockpit' | 'padlock' | 'chase' | 'flyby';
+export type ViewMode = 'cockpit' | 'padlock' | 'chase' | 'flyby' | 'combat';
 
 export interface FlightScreenOpts {
   world: World;
@@ -96,6 +96,37 @@ export class FlightScreen implements Screen {
     if (this.debug) this.debugTaps();
     this.consumeEvents();
     if (s.lookBack && this.app.input.roll !== 0) this.lookSide = this.app.input.roll > 0 ? 1 : -1;
+    this.updateSound();
+  }
+
+  private lastFired = 0;
+  private shotAt = -1e9;
+  private lastGear = 0;
+
+  /** The engine, guns, wind and buffet for the sound chip. */
+  protected updateSound(): void {
+    const me = this.player;
+    const fs = me.fs;
+    if (this.paused || me.status === 'destroyed' || this.playerChute()) { this.app.audio.flight(null); return; }
+    const id = me.type.id;
+    const kind = id === 'spitfire' || id === 'hurricane' ? 'merlin' : id === 'bf109' || id === 'bf110' ? 'db601' : 'radial';
+    const fired = me.armament.fired;
+    const now = performance.now();
+    if (fired > this.lastFired) this.shotAt = now;
+    this.lastFired = fired;
+    const shooting = now - this.shotAt < 120;
+    const eight = me.type.guns.length >= 8;
+    // The gear pump: a click with each stroke.
+    if (fs.type.gear === 'pump' && Math.abs(fs.gear - this.lastGear) > 0.06) { this.app.sound('pump', 0.5); this.lastGear = fs.gear; }
+    this.app.audio.flight({
+      engine: fs.engine === 'running' || fs.engine === 'coughing' || fs.engine === 'starting' ? kind : null,
+      rpmFrac: fs.rpm / 2600,
+      throttle: fs.throttle,
+      guns: shooting ? (eight ? 8 : 4) : 0,
+      speed: fs.tas,
+      buffet: fs.onGround ? 0 : fs.buffet,
+      inside: this.view === 'cockpit' || this.view === 'padlock',
+    });
   }
 
   protected requestBail(): void {
@@ -206,6 +237,20 @@ export class FlightScreen implements Screen {
       case 'playerHit':
         haptics.pulse(40);
         this.hitFlash = 0.15;
+        this.app.sound(this.fxRng.chance(0.6) ? 'clang' : 'thud', 0.9, 0.85 + this.fxRng.next() * 0.4);
+        break;
+      case 'hit':
+        // Our rounds striking home: a faint thud.
+        if (e.otherId === me.id) this.app.sound('thud', 0.35, 1.3);
+        break;
+      case 'explode': {
+        const p = e.pos ?? w.planeById(e.planeId)?.pos;
+        const d = p ? p.distTo(me.pos) : 5000;
+        if (d < 4000) this.app.sound('explode', Math.min(1, 300 / Math.max(100, d)), 0.8 + this.fxRng.next() * 0.3);
+        break;
+      }
+      case 'engineCough':
+        if (e.planeId === me.id) this.app.sound('cough', 0.9);
         break;
       case 'shotDown':
         if (e.otherId === me.id) {
@@ -232,10 +277,10 @@ export class FlightScreen implements Screen {
         if (e.planeId !== me.id && w.planeById(e.planeId)?.side !== me.side) this.flashMessage('HE\'S BALED OUT', 2);
         break;
       case 'bounce':
-        if (e.planeId === me.id) { this.flashMessage('BOUNCED!', 1.5); haptics.pulse(60); }
+        if (e.planeId === me.id) { this.flashMessage('BOUNCED!', 1.5); haptics.pulse(60); this.app.sound('thump', 1); }
         break;
       case 'touchdown':
-        if (e.planeId === me.id) { haptics.pulse(30); this.lastTouch = me.landing.contacts[me.landing.contacts.length - 1] ?? null; }
+        if (e.planeId === me.id) { haptics.pulse(30); this.app.sound('thump', 0.6); this.lastTouch = me.landing.contacts[me.landing.contacts.length - 1] ?? null; }
         break;
       case 'groundLoop':
         if (e.planeId === me.id) this.flashMessage('GROUND LOOP!', 2.5);
@@ -253,7 +298,7 @@ export class FlightScreen implements Screen {
         if (e.planeId === me.id) this.flashMessage('DITCHED - GET OUT!', 6);
         break;
       case 'crash':
-        if (e.planeId === me.id) this.flashMessage('CRASHED', 6);
+        if (e.planeId === me.id) { this.flashMessage('CRASHED', 6); this.app.sound('explode', 1, 0.7); }
         break;
       case 'liftoff':
         if (e.planeId === me.id) this.lastTouch = null;
@@ -285,7 +330,7 @@ export class FlightScreen implements Screen {
   }
 
   protected cycleView(): void {
-    const order: ViewMode[] = ['cockpit', 'padlock', 'chase', 'flyby'];
+    const order: ViewMode[] = ['cockpit', 'padlock', 'chase', 'flyby', 'combat'];
     this.view = order[(order.indexOf(this.view) + 1) % order.length];
     if (this.view === 'flyby') this.placeFlyby();
   }
@@ -394,8 +439,27 @@ export class FlightScreen implements Screen {
 
   // ------------------------------------------------------------ cameras
 
+  /** The aircraft the external cameras follow (the player unless a replay picks another). */
+  subjectId = -1;
+  private combatDir = new Vec3(0, 0, 1);
+
+  protected subject(): Plane {
+    if (this.subjectId < 0) return this.player;
+    return this.world.planes.find((q) => q.id === this.subjectId) ?? this.player;
+  }
+
+  protected nearestOpponent(of: Plane): Plane | null {
+    let best: Plane | null = null, bd = 6000;
+    for (const q of this.world.planes) {
+      if (q.side === of.side || q.status !== 'flying') continue;
+      const d = q.pos.distTo(of.pos);
+      if (d < bd) { bd = d; best = q; }
+    }
+    return best;
+  }
+
   protected placeFlyby(): void {
-    const p = this.player.fs;
+    const p = this.subject().fs;
     const f = p.forward();
     this.flybyPos.copy(p.pos).addScaled(f, 220).addScaled(p.right(), 25);
     this.flybyPos.y += 8;
@@ -445,16 +509,28 @@ export class FlightScreen implements Screen {
         cam.cy += Math.round(this.fxRng.signed() * k);
       }
     } else if (this.view === 'chase') {
+      const sf = this.subject().fs;
       cam.setViewport(0, 0, 320, 256, TUNING.render.fovDeg);
-      this.chaseQ = Quat.slerp(this.chaseQ, fs.q, 0.12);
+      this.chaseQ = Quat.slerp(this.chaseQ, sf.q, 0.12);
       const back = this.chaseQ.rotate(new Vec3(0, 3.5, -22));
-      cam.pos.copy(fs.pos).add(back);
-      cam.setOrientation(Quat.lookRotation(fs.pos.clone().sub(cam.pos), this.chaseQ.rotate(new Vec3(0, 1, 0))));
+      cam.pos.copy(sf.pos).add(back);
+      cam.setOrientation(Quat.lookRotation(sf.pos.clone().sub(cam.pos), this.chaseQ.rotate(new Vec3(0, 1, 0))));
+    } else if (this.view === 'combat') {
+      // Over the subject's shoulder towards its nearest opponent.
+      const sub = this.subject();
+      const t = this.nearestOpponent(sub);
+      const want = t ? t.pos.clone().sub(sub.pos).normalize() : sub.fs.forward();
+      this.combatDir.lerp(want, 0.08).normalize();
+      cam.setViewport(0, 0, 320, 256, TUNING.render.fovDeg);
+      cam.pos.copy(sub.pos).addScaled(this.combatDir, -32);
+      cam.pos.y += 7;
+      cam.setOrientation(Quat.lookRotation(sub.pos.clone().addScaled(this.combatDir, 60).sub(cam.pos)));
     } else {
+      const sf = this.subject().fs;
       cam.setViewport(0, 0, 320, 256, 40);
-      if (this.flybyPos.distTo(fs.pos) > 600) this.placeFlyby();
+      if (this.flybyPos.distTo(sf.pos) > 600) this.placeFlyby();
       cam.pos.copy(this.flybyPos);
-      cam.setOrientation(Quat.lookRotation(fs.pos.clone().sub(cam.pos)));
+      cam.setOrientation(Quat.lookRotation(sf.pos.clone().sub(cam.pos)));
     }
     return { headTurned };
   }
@@ -620,9 +696,10 @@ export class FlightScreen implements Screen {
   }
 
   protected drawHud(fb: FrameBuffer): void {
-    if (this.view === 'chase' || this.view === 'flyby') {
-      const fs = this.player.fs;
-      drawText(fb, `${Math.round(fs.ias * MPS_TO_MPH)} MPH  ${Math.round(fs.pos.y * M_TO_FT)} FT`, 4, 4, C.WHITE, 'tiny');
+    if (this.view === 'chase' || this.view === 'flyby' || this.view === 'combat') {
+      const sub = this.subject();
+      const fs = sub.fs;
+      drawText(fb, `${sub === this.player ? '' : `${sub.type.short} ${sub.callsign}  `}${Math.round(fs.ias * MPS_TO_MPH)} MPH  ${Math.round(fs.pos.y * M_TO_FT)} FT`, 4, 4, C.WHITE, 'tiny');
     }
   }
 
