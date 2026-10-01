@@ -349,6 +349,8 @@ export class World {
     this.ctx.time = this.time;
     for (const p of this.planes) {
       if (!p.airborneObject) continue;
+      // Last tick's flight events have been read by now (the screen reads the player's after each tick).
+      p.fs.events.length = 0;
       p.prevPos.copy(p.pos);
       if (p.isPlayer && player?.cmds) for (const cmd of player.cmds) this.playerCommand(p, cmd);
       if (p.isPlayer && player && p.status === 'flying') {
@@ -377,7 +379,6 @@ export class World {
       this.gunsStep(p, dt);
       this.bailStep(p, dt);
       this.groundRoll(p);
-      if (p.fs.events.length && !p.isPlayer) p.fs.events.length = 0;
     }
     this.bulletsStep(dt);
     this.raidsStep(dt);

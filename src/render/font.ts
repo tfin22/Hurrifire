@@ -124,7 +124,7 @@ const TINY: Record<string, string> = {
   '-': '...|...|xxx|...|...', '.': '...|...|...|...|.x.', '/': '..x|..x|.x.|x..|x..',
   ':': '...|.x.|...|.x.|...', '+': '...|.x.|xxx|.x.|...', '%': 'x.x|..x|.x.|x..|x.x',
   ' ': '...|...|...|...|...', '<': '..x|.x.|x..|.x.|..x', '>': 'x..|.x.|..x|.x.|x..',
-  "'": '.x.|.x.|...|...|...', '!': '.x.|.x.|.x.|...|.x.', '?': 'xx.|..x|.x.|...|.x.',
+  "'": '.x.|.x.|...|...|...', ',': '...|...|...|.x.|x..', '!': '.x.|.x.|.x.|...|.x.', '?': 'xx.|..x|.x.|...|.x.',
   '(': '.x.|x..|x..|x..|.x.', ')': '.x.|..x|..x|..x|.x.', '=': '...|xxx|...|xxx|...',
 };
 
@@ -223,6 +223,7 @@ export function wrapText(s: string, maxW: number, font: FontName = 'topaz'): str
 /** Big text: the menu font scaled up by an integer factor (logos, headings). */
 export function drawTextScaled(fb: FrameBuffer, s: string, x: number, y: number, c: number, scale: number, shadow = -1): void {
   s = foldText(s);
+  x = Math.round(x); y = Math.round(y);
   if (shadow >= 0) drawTextScaled(fb, s, x + scale, y + scale, shadow, scale);
   for (let i = 0; i < s.length; i++) {
     const g = BIG.get(s[i]) ?? BIG.get('?')!;

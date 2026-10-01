@@ -1,4 +1,5 @@
 import { App } from './app';
+import { Flow } from './flow';
 import { BenchScreen } from './screens/bench';
 import { allModels } from './content/models';
 import { Vec3 } from './core/math';
@@ -15,7 +16,15 @@ import { generateWeather, windVector } from './sim/weather';
 
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
 const app = new App(canvas, (a) => {
-  if (new URLSearchParams(location.search).has('models')) return new BenchScreen(a, () => {}, allModels());
+  const qs = new URLSearchParams(location.search);
+  if (qs.has('models')) return new BenchScreen(a, () => {}, allModels());
+  if (!qs.has('free')) {
+    const flow = new Flow(a);
+    if (qs.has('qc')) { queueMicrotask(() => flow.quickCombat()); }
+    if (qs.has('scramble')) { queueMicrotask(() => flow.scramble()); }
+    return flow.title();
+  }
+  // ?free&lat=..&lon=..&alt=..: free flight over the map (testing).
   const map = worldMap();
   const objs = new WorldObjects(map);
   const q = new URLSearchParams(location.search);

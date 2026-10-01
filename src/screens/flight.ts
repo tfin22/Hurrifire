@@ -363,11 +363,16 @@ export class FlightScreen implements Screen {
     if (this.paused) return;
     const f = this.controlFrame();
     this.recording.push(f);
-    this.world.step(f);
+    this.stepSim(f);
     this.afterTick();
     if (this.messageT > 0) this.messageT -= TUNING.sim.dt;
     if (this.hitFlash > 0) this.hitFlash -= TUNING.sim.dt;
     if (this.woundFlash > 0) this.woundFlash -= TUNING.sim.dt * 0.7;
+  }
+
+  /** Advance the simulation one tick (a sortie wraps the world). */
+  protected stepSim(f: ControlFrame): void {
+    this.world.step(f);
   }
 
   /** Hook for subclasses / later systems. */

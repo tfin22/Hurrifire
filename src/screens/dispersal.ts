@@ -169,7 +169,7 @@ function drawHut(fb: FrameBuffer, t: number, ringing: boolean, copper: Uint8Arra
   fillRect(fb, 168, 34, 136, 70, C.BLACK);
   rectOutline(fb, 167, 33, 138, 72, C.RAF_EARTH_L);
   drawText(fb, 'STATE: READINESS', 174, 40, C.CHALK, 'hand');
-  drawText(fb, `A FLT: ${spec.leading ? 'You' : 'S/L'}, ${spec.others.slice(0, 2).map((o) => o.name.split(' ').pop()).join(', ')}`, 174, 54, C.CHALK, 'hand');
+  drawText(fb, `A FLT: ${spec.leading ? 'You' : 'S/L'}, ${spec.others.slice(0, 2).map((o) => o.name.split(' ').pop()).join(', ')}`.slice(0, 21), 174, 54, C.CHALK, 'hand');
   drawText(fb, 'B FLT: released', 174, 66, C.CHALK, 'hand');
   drawText(fb, `Cloud ${Math.round(spec.weather.cover * 8)}/8`, 174, 80, C.CHALK, 'hand');
   // Floor.

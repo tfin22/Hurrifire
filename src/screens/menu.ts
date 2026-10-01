@@ -40,7 +40,7 @@ export class TitleScreen implements Screen {
       { label: 'LOGBOOK', act: () => this.actions.logbook() },
       { label: 'SETTINGS', act: () => this.actions.settings() },
       { label: 'MODEL VIEWER', act: () => this.actions.modelViewer() },
-    ], 90, 128, 140, 14);
+    ], 90, 146, 140, 14);
   }
 
   frame(): void {
@@ -80,7 +80,7 @@ export class TitleScreen implements Screen {
     this.cam.setOrientation(Quat.fromEuler(0, 0.1, 0));
     for (let k = 0; k < 2; k++) {
       const z = 38 + k * 14;
-      const pos = new Vec3(-14 + k * 9 + Math.sin(t * 0.3 + k) * 1.5, -2 + k * 3 + Math.sin(t * 0.5 + k) * 0.6, z);
+      const pos = new Vec3(-9 + k * 14 + Math.sin(t * 0.3 + k) * 1.5, 7.5 - k * 1.5 + Math.sin(t * 0.5 + k) * 0.6, z);
       const q = Quat.fromEuler(0.65, 0.35, -0.25 + Math.sin(t * 0.4 + k) * 0.08);
       this.r3d.addModel(spitfireModel, pos, q, { noCollapse: true });
     }
@@ -90,8 +90,8 @@ export class TitleScreen implements Screen {
     const logo = 'SCRAMBLE!';
     drawTextScaled(fb, logo, (W - scaledWidth(logo, 3)) / 2, 18, C.SIGHT, 3, C.BLACK);
     drawTextCentered(fb, 'THE BATTLE OF BRITAIN  -  SUMMER 1940', 160, 50, C.WHITE, 'topaz', C.BLACK);
-    fillRect(fb, 70, 118, 180, 98, C.BLACK);
-    fillRect(fb, 72, 120, 176, 94, C.SMOKE);
+    fillRect(fb, 70, 138, 180, 94, C.BLACK);
+    fillRect(fb, 72, 140, 176, 90, C.SMOKE);
     this.menu.draw(fb);
     drawText(fb, `${this.game.pilot.name.toUpperCase()}  ${this.game.pilot.sorties} SORTIES`, 6, 246, C.CHALK, 'tiny');
     drawText(fb, 'A PERSONAL HOMAGE. ALL ART, SOUND AND CODE ORIGINAL.', 100, 246, C.GREY_L, 'tiny');

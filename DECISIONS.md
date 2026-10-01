@@ -177,3 +177,35 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
 - **Oil on the windscreen** stipples out the centre of the windscreen and
   leaves the side panels clear, so a curved approach looking out of the
   side works.
+
+## The sortie
+
+- **Raids are abstract until met.** A raid is a plot moving along its route
+  until any RAF fighter comes within 30 km, then it becomes real aircraft
+  in formation. This keeps big days cheap. A raid nobody meets bombs
+  abstractly (about half its bombs on target).
+- **The controller works from the plot, not the truth.** Positions carry a
+  few kilometres of error, and each raid's height has a fixed radar error of
+  up to about ±1,800 m (±6,000 ft) plus noise. Strength is an estimate
+  (×0.7–1.4). Vectors are collision-course intercepts from the plot.
+- **Every discrete action is a recorded command** in the control stream:
+  gear, flaps, bail-out, primer, mags, starter, tally-ho and orders. Same
+  seed plus same frames gives the same sortie, which the replay camera needs.
+- **Start-up**: primer, magnetos, starter; or one START in Assist. Cranking
+  without priming or with the mags off coughs but won't catch.
+- **Tally-ho needs something within 9 km.** When the player isn't leading,
+  the AI leader calls it when he spots the enemy.
+- **Claims**: the pilot claims from what they last saw. A target seen going
+  down is claimed destroyed; a heavily hit target seen smoking is claimed
+  destroyed 60% of the time. Intelligence confirms a claim only on evidence:
+  a wreck in England, seen to crash, or a parachute. Otherwise it is allowed
+  as a probable. Over-claiming therefore happens, as it did.
+- **Rescue at sea** depends on distance from the English coast: about 85%
+  within 5 km, falling to about 12% far out. Coming down in France means
+  captivity.
+- **Bomber gunners** were made much less accurate after the first
+  playtests, where a box of Do 17s shot down a whole section before it
+  closed. Aim error grows quickly with range, as flexible guns from a
+  moving bomber did.
+- **Quick Combat** currently drops you at height near a random raid. The
+  proper setup screen (type, raid, escort, weather) comes in milestone 8.

@@ -56,7 +56,7 @@ function autoplay(s: Sortie, maxMin = 50): void {
     s.step(null);
     if (process.env.SHOW && i % 1500 === 0) console.log('T', (i / 50).toFixed(0), s.phase, p.status, brain.label(), 'alt', p.pos.y.toFixed(0), 'agl', p.fs.agl.toFixed(0), 'hits', p.damage.hits, 'fired', p.armament.fired, 'raid', s.world.raids[0].plot.distTo(p.pos).toFixed(0), landing);
   }
-  if (process.env.SHOW) console.log('END', p.status, p.landing.result?.kind, p.damage.pilot, p.fs.agl.toFixed(0), JSON.stringify(p.landing.contacts));
+  if (process.env.SHOW) console.log('END', p.status, p.landing.result?.kind, p.damage.pilot, p.fs.agl.toFixed(0), JSON.stringify(p.landing.contacts), 'onGround', p.fs.onGround, 'stopped', p.fs.stopped, 'sliding', p.fs.sliding, 'tas', p.fs.tas.toFixed(1), 'gear', p.fs.gear, 'engine', p.fs.engine, 'bailing', p.bailing, 'crew', p.crewAboard);
 }
 
 describe('a whole sortie', () => {
