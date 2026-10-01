@@ -10,6 +10,7 @@ import { flyApproach } from '../src/sim/ai/approach';
 import { generateRaids, Sortie, SortieSpec } from '../src/sim/sortie';
 import { generateWeather } from '../src/sim/weather';
 import { skillFor } from '../src/sim/ai/types';
+import { applySortie, newCampaign, nextSortieSpec } from '../src/campaign/campaign';
 
 const map = worldMap();
 const objects = new WorldObjects(map);
@@ -73,6 +74,26 @@ describe('a whole sortie', () => {
     expect(r.date).toBe('18 August 1940');
     expect(['landed', 'forced', 'belly', 'crashLanded', 'ditched', 'bailLand', 'bailSea', 'lostSea', 'killed', 'pow']).toContain(r.outcome.kind);
   }, 60000);
+
+  it('a campaign sortie as a wingman: built from the roster, flown, and folded back in', () => {
+    const c = newCampaign(31, { surname: 'Fenwick', home: 'Biggin Hill', aircraft: 'hurricane', ironman: true });
+    const home = map.airfieldByName('Biggin Hill')!;
+    const sp = { ...nextSortieSpec(c, map, { convergenceM: 230, assist: true }), start: 'air' as const, airStart: { pos: new Vec3(home.pos.x, 4500, home.pos.z), heading: 2.4 } };
+    expect(sp.leading).toBe(false);
+    const s = new Sortie(sp, map, objects);
+    expect(s.formation[0]).not.toBe(s.player); // the CO leads
+    autoplay(s);
+    const r = s.result!;
+    expect(r).not.toBeNull();
+    expect(r.fates.length).toBe(sp.others.length);
+    for (const f of r.fates) expect(c.roster.some((p) => p.id === f.id)).toBe(true);
+    const before = c.roster.reduce((a, p) => a + p.sorties, 0);
+    applySortie(c, r);
+    if (!c.ended) {
+      expect(c.player.sorties).toBe(1);
+      expect(c.roster.reduce((a, p) => a + p.sorties, 0)).toBeGreaterThanOrEqual(before + sp.others.length);
+    }
+  }, 90000);
 
   it('replays identically from the same seed', () => {
     const a = new Sortie(spec(5), map, objects);

@@ -22,6 +22,16 @@ const app = new App(canvas, (a) => {
     const flow = new Flow(a);
     if (qs.has('qc')) { queueMicrotask(() => flow.fly(flow.game.quickCombatSpec({ playerType: 'spitfire', raid: (qs.get('qc') || 'bombers') as 'bombers', escort: true, weather: 'cumulus', wingmen: +(qs.get('wing') ?? 2) }, 1940))); }
     if (qs.has('scramble')) { queueMicrotask(() => flow.scramble()); }
+    // ?camp: the campaign board; &new starts afresh, &day=N jumps to the Nth campaign day (testing).
+    if (qs.has('camp')) {
+      queueMicrotask(() => {
+        if (qs.has('new') || !flow.game.campaign) flow.game.startCampaign({ surname: 'Fenwick', home: 'Biggin Hill', aircraft: 'hurricane', ironman: false });
+        const c = flow.game.campaign!;
+        if (qs.has('day')) c.dayIdx = +qs.get('day')!;
+        if (qs.has('pairs')) c.pairsOffered = true;
+        flow.board();
+      });
+    }
     return flow.title();
   }
   // ?free&lat=..&lon=..&alt=..: free flight over the map (testing).
@@ -40,7 +50,10 @@ const app = new App(canvas, (a) => {
   world.sun.copy(sunDirection(dayOfYear(8, 15), +(q.get('hour') ?? 14)));
   a.input.throttle = 0.8;
   const fsScreen = new FlightScreen(a, { world, terrain: map, onExit: () => location.reload() });
-  fsScreen.scene.layers.push(makeWorldLayer(objs, world, () => []));
+  // &plume: the docks burning, as from 7 September.
+  const [dx, dz] = lonLatToXZ(51.502, -0.02);
+  const plumes = q.has('plume') ? [{ pos: new Vec3(dx, map.heightAt(dx, dz), dz), height: 4500 }] : [];
+  fsScreen.scene.layers.push(makeWorldLayer(objs, world, () => [], plumes));
   return fsScreen;
 });
 app.start();

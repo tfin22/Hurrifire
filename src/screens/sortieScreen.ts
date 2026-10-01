@@ -10,7 +10,9 @@ import { drawText } from '../render/font';
 import { FrameBuffer, W } from '../render/framebuffer';
 import { C } from '../render/palette';
 import { fillRect, pset } from '../render/raster';
-import { makeWorldLayer } from '../render/worldLayer';
+import { makeWorldLayer, Plume } from '../render/worldLayer';
+import { lonLatToXZ } from '../content/world/map';
+import { Vec3 } from '../core/math';
 import { Sortie, SortieResult } from '../sim/sortie';
 import { TUNING } from '../tuning';
 import { FlightScreen } from './flight';
@@ -30,7 +32,9 @@ export class SortieScreen extends FlightScreen {
 
   constructor(app: App, readonly sortie: Sortie, private done: (r: SortieResult) => void, quit: () => void) {
     super(app, { world: sortie.world, terrain: sortie.map, onExit: quit });
-    this.scene.layers.push(makeWorldLayer(sortie.objects, sortie.world, () => sortie.ships));
+    const spec = sortie.spec;
+    const plumes = spec.month > 9 || (spec.month === 9 && spec.day >= 7) ? docksPlume(sortie) : [];
+    this.scene.layers.push(makeWorldLayer(sortie.objects, sortie.world, () => sortie.ships, plumes));
     this.world.autoRudder = app.settings.autoRudder;
     app.input.throttle = sortie.spec.start === 'air' ? 0.85 : 0;
   }
@@ -143,4 +147,11 @@ export class SortieScreen extends FlightScreen {
     }
     return b;
   }
+}
+
+/** The docks, burning since the afternoon of 7 September. */
+function docksPlume(sortie: Sortie): Plume[] {
+  const [x, z] = lonLatToXZ(51.502, -0.02);
+  const fresh = sortie.spec.month === 9 && sortie.spec.day < 10;
+  return [{ pos: new Vec3(x, sortie.map.heightAt(x, z), z), height: fresh ? 4500 : 2500 }];
 }

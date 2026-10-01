@@ -29,6 +29,8 @@ import { DayWeather, windVector } from './weather';
 import { World } from './world';
 
 export interface SquadronPilot {
+  /** Campaign roster id, reported back in the result. */
+  id?: number;
   name: string;
   skill: SkillLevel;
   fatigue: number;
@@ -93,6 +95,12 @@ export interface SortieResult {
   logLine: string;
   rtLog: string[];
   engaged: boolean;
+  /** What happened to each of the others, by roster id (campaign). */
+  fates: { id: number; name: string; fate: 'ok' | 'damaged' | 'safe' | 'wounded' | 'lost' | 'pow'; kills: number }[];
+  /** Enemy aircraft the rest of the formation shot down. */
+  squadronKills: number;
+  /** Bombs that burst on each airfield. */
+  airfieldHits: Record<string, number>;
 }
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -115,6 +123,8 @@ export class Sortie {
   private endT = -1;
   private seen = new Map<number, Engagement['lastSeen']>();
   private names = new Map<number, string>();
+  private rosterIds = new Map<number, number>();
+  private airfieldHits: Record<string, number> = {};
   /** Messages for the screen (start-up prompts etc.). */
   prompts: string[] = [];
   result: SortieResult | null = null;
@@ -164,6 +174,7 @@ export class Sortie {
         plane.skill = skillFor(o.skill);
         plane.fatigue = o.fatigue;
         this.names.set(plane.id, o.name);
+        this.rosterIds.set(plane.id, o.id ?? -1);
       }
       all.push(plane);
     }
@@ -419,6 +430,7 @@ export class Sortie {
     if (af) {
       if (af.craters.length < 40) af.craters.push({ x: pos.x, z: pos.z, r: 6 + this.rng.next() * 4 });
       af.damaged++;
+      this.airfieldHits[af.name] = (this.airfieldHits[af.name] ?? 0) + 1;
       // Hangars near the burst are wrecked.
       for (const o of this.objects.near(pos.x, pos.z, 120)) {
         if (o.kind === 'hangar' && o.pos.distTo(pos) < 60) o.kind = 'wreckedHangar';
@@ -482,6 +494,23 @@ export class Sortie {
         losses.push({ name, line: q.damage.pilot === 'killed' || q.status === 'destroyed' ? LOSS_LINES.lostAir(name, place) : LOSS_LINES.lostCrash(name, place), lost: true });
       }
     }
+    // Everyone else's fate, for the campaign roster.
+    const fates: SortieResult['fates'] = [];
+    let squadronKills = 0;
+    for (const q of this.formation) {
+      if (q === p) continue;
+      const kills = w.planes.filter((e) => e.side === 'lw' && e.killedBy === q.id && e.status !== 'flying').length;
+      squadronKills += kills;
+      const name = this.names.get(q.id) ?? q.callsign;
+      const loss = losses.find((l) => l.name === name);
+      const chute = w.parachutes.find((c) => c.fromPlane === q.id);
+      let fate: SortieResult['fates'][number]['fate'] = 'ok';
+      if (loss?.lost) fate = chute && isFrance(chute.pos.x, chute.pos.z) ? 'pow' : 'lost';
+      else if (loss) fate = 'safe';
+      else if (q.damage.pilot === 'wounded') fate = 'wounded';
+      else if (damageFraction(q.damage) > 0.08 || q.status === 'crashed') fate = 'damaged';
+      fates.push({ id: this.rosterIds.get(q.id) ?? -1, name, fate, kills });
+    }
     const t = tally(claims);
     const types = [...new Set(w.planes.filter((q) => q.side === 'lw' && q.pos.distTo(p.pos) < 50000 && (q.damage.by[p.id] || this.engaged)).map((q) => q.type.short + 's'))].slice(0, 2).join(' and ');
     const placeOfFight = this.fightPlace ?? describePlace(this.map, p.pos.x, p.pos.z).replace(/^(over|near|off) /, '');
@@ -518,6 +547,9 @@ export class Sortie {
       logLine: line,
       rtLog: this.controller.log.map((m) => m.text),
       engaged: this.engaged,
+      fates,
+      squadronKills,
+      airfieldHits: { ...this.airfieldHits },
     };
   }
 

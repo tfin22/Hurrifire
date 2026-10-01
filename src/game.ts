@@ -13,6 +13,14 @@ import { generateWeather } from './sim/weather';
 import { generateRaids, SortieResult, SortieSpec } from './sim/sortie';
 import { SkillLevel } from './sim/ai/types';
 import { AircraftId } from './content/aircraft';
+import { CampaignState, loadCampaign, newCampaign, NewCampaignOpts, saveCampaign, KeyValueStore } from './campaign/campaign';
+
+/** localStorage, or nothing (private windows, blocked storage). */
+const store: KeyValueStore = {
+  getItem: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+  setItem: (k, v) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } },
+  removeItem: (k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } },
+};
 
 export interface LogEntry {
   date: string;
@@ -73,11 +81,29 @@ export class Game {
   readonly objects: WorldObjects;
   pilot: PilotRecord;
   lastResult: SortieResult | null = null;
+  campaign: CampaignState | null = null;
+  campaignProblem: 'version' | 'corrupt' | null = null;
 
   constructor(readonly app: App) {
     this.map = worldMap();
     this.objects = new WorldObjects(this.map);
     this.pilot = loadPilot();
+    const c = loadCampaign(store);
+    if (c.ok) this.campaign = c.state;
+    else if (c.reason !== 'none') this.campaignProblem = c.reason;
+  }
+
+  startCampaign(o: NewCampaignOpts): CampaignState {
+    this.campaign = newCampaign((Date.now() & 0x7fffffff) >>> 0, o);
+    this.campaignProblem = null;
+    this.pilot = { name: `P/O ${o.surname}`, logbook: [], sorties: 0, destroyed: 0, probable: 0, damaged: 0 };
+    savePilot(this.pilot);
+    this.saveCampaign();
+    return this.campaign;
+  }
+
+  saveCampaign(): void {
+    if (this.campaign) saveCampaign(this.campaign, store);
   }
 
   /** A "Scramble only" sortie: a random day of the battle, from readiness. */

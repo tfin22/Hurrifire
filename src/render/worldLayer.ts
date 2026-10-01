@@ -24,7 +24,10 @@ export interface Ship {
   sunk?: boolean;
 }
 
-export function makeWorldLayer(objs: WorldObjects, world: World, ships: () => Ship[]) {
+/** The docks burning (from 7 September): a column of smoke kilometres high, leaning downwind. */
+export interface Plume { pos: Vec3; height: number }
+
+export function makeWorldLayer(objs: WorldObjects, world: World, ships: () => Ship[], plumes: Plume[] = []) {
   const near: GroundObject[] = [];
   const blobs: CloudBlob[] = [];
   const top = new Vec3();
@@ -73,6 +76,21 @@ export function makeWorldLayer(objs: WorldObjects, world: World, ships: () => Sh
       const d = Math.hypot(s.pos.x - cx, s.pos.z - cz);
       if (d > 20000) continue;
       r.addModel(MODELS[s.kind], s.pos, Quat.fromEuler(s.heading, 0, 0), { visRange: 18000 });
+    }
+    // Smoke plumes: dark puffs climbing and spreading, fire at the foot.
+    for (const pl of plumes) {
+      const d = Math.hypot(pl.pos.x - cx, pl.pos.z - cz);
+      if (d > 70000) continue;
+      const w = world.weather.wind;
+      const n = d > 25000 ? 10 : 24;
+      for (let i = 0; i < n; i++) {
+        const k = i / (n - 1);
+        const h = pl.height * k;
+        const churn = Math.sin(world.time * 0.2 + i * 1.7) * 60 * k;
+        top.set(pl.pos.x + w.x * h * 0.09 + churn, pl.pos.y + h, pl.pos.z + w.z * h * 0.09 - churn * 0.5);
+        const rad = 220 + 900 * k * k;
+        r.addPuff(top, rad, i === 0 && d < 30000 ? C.FIRE_R : k < 0.5 ? C.SMOKE : C.GREY_D, k > 0.85);
+      }
     }
     // Clouds.
     const cf = world.cloudField;

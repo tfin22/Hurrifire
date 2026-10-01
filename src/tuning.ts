@@ -163,6 +163,54 @@ export const TUNING = {
     bailDelay: [2, 6] as const,
   },
 
+  campaign: {
+    /** Pilots on strength at the start, and the level replacements top up to. */
+    startPilots: 18,
+    establishment: 16,
+    /** Aircraft on strength, and the level replacements top up to. */
+    startAircraft: 16,
+    /** Aircraft in a squadron scramble, and in a flight. */
+    squadronSize: 12,
+    flightSize: 6,
+    /** Fatigue added per sortie flown, recovered per night off. */
+    fatiguePerSortie: 0.13,
+    fatigueRecovery: 0.22,
+    /** Above this a pilot is stood down for a rest. */
+    fatigueRest: 0.8,
+    /** Airfield damage per bomb that burst on it (1 = closed). */
+    damagePerBomb: 0.025,
+    /** Airfield damage repaired per day. */
+    repairPerDay: 0.25,
+    /** An airfield with this much damage cannot operate. */
+    closedAt: 0.6,
+    /** Off-screen: chance per day a sector station is bombed in the airfields phase. */
+    airfieldRaidChance: 0.22,
+    /** Off-screen: chance per sortie that a pilot is lost, by phase. */
+    lossPerSortie: { channel: 0.016, airfields: 0.034, london: 0.03, jabo: 0.012 },
+    /** Off-screen: chance per sortie that a pilot shoots something down. */
+    killPerSortie: { channel: 0.06, airfields: 0.09, london: 0.1, jabo: 0.03 },
+    /** Off-screen: chance a raid met by the squadron turns back. */
+    turnBackChance: 0.3,
+    /** Off-screen loss multiplier for the tight vic (pairs = 1). */
+    vicLossFactor: 1.35,
+    /** Skill: average after this many sorties; experte after more and some kills. */
+    averageAfter: 8,
+    experteAfter: 25,
+    experteKills: 3,
+    /** Promotion to Flight Lieutenant: sorties and victories, or sorties alone. */
+    fltLtSorties: 10,
+    fltLtKills: 2,
+    fltLtSortiesAlone: 18,
+    /** Promotion to Squadron Leader: sorties at F/Lt and victories, or total sorties. */
+    sqnLdrSortiesAtRank: 8,
+    sqnLdrKills: 5,
+    sqnLdrSortiesAlone: 40,
+    /** Sorties needed to fill a vacancy left by a loss. */
+    vacancySorties: 5,
+    /** Days in hospital when wounded. */
+    woundedDays: [4, 14] as [number, number],
+  },
+
   sortie: {
     /** Seconds of cranking before the engine catches (or doesn't). */
     crankToCatch: 2.2,

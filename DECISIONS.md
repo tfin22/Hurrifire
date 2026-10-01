@@ -236,3 +236,45 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   glycol and engines wear). Now about 0.8 ms per tick for the sim and
   1.8 ms per frame for the render on a desktop: 34 fps at 6×, 48 fps at 4×.
   On the phone itself the 1990 mode cap is the fallback.
+
+## Campaign
+
+- **Only the big days are flown**: 31 days from 10 July to 29 October, with
+  1-3 sorties each (two on 15 September). At 5-10 minutes a sortie the
+  whole campaign is a few hours. The days in between pass off-screen: the
+  squadron flies, claims, loses pilots, gets replacements and rests, and the
+  sector stations are bombed and mended. The board says what happened.
+- **The roster** is 17 invented pilots plus you, with a CO and two flight
+  commanders. Replacements are mostly green, straight from an OTU, and from
+  August more of them are Polish, Czech or from the Dominions. Pilots get
+  better with sorties (average after 8; experte after 25 and 3 victories).
+- **Fatigue** builds 0.13 a sortie and recovers 0.22 a night. Above 0.8 a
+  pilot is stood down. In the air it means a little less G tolerance and
+  slower spotting, for you as well.
+- **Rank.** Pilot Officer flies as a wingman in the CO's squadron. Flight
+  Lieutenant leads B Flight (six aircraft). Squadron Leader leads the
+  squadron (twelve). Promotion comes on merit (sorties and confirmed
+  victories) or by vacancy, when the man above is lost and you have enough
+  sorties. A promotion on merit posts the incumbent away, so nobody has to
+  die for it.
+- **Vic or pairs.** The board offers pairs from Adlertag (13 August). The
+  choice is yours whatever your rank: as a junior you are the one who has
+  talked the CO round. Vics spot worse in the air (see the raid) and lose
+  about a third more pilots off-screen.
+- **Airfields.** Each sector station has a damage level; 40 bombs close
+  one, and it mends by a quarter a day. Damage puts flagged craters on the
+  grass (placed from a seed, so they stay put across a day). A raid on your
+  own field is a scramble under attack.
+- **Score** (out of 1000): sector stations open 300, raids turned back
+  250, the squadron's survival 250, your record 150, rank 50. Victories
+  alone can't win it.
+- **Dying.** In Ironman a lost pilot ends the career, and leaving a sortie
+  part way counts as turning back with a rough engine (no walking away
+  from a fight going badly). Otherwise the sortie is struck from the record
+  and flown again with a fresh seed.
+- **Saves** are a single versioned JSON blob in localStorage, written after
+  every sortie and every change on the board. A save from another version
+  is refused with a clear message, and the player can start again.
+- **The docks plume** burns from 7 September: a column of smoke kilometres
+  high above the Surrey and West India Docks, leaning downwind, visible
+  from most of Kent. It is tallest in the first days.
