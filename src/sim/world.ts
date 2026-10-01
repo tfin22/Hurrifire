@@ -17,6 +17,7 @@ import { evaluateTouchdown, obstacleImpact, worseOf } from './landing';
 import { stepGunner } from './guns';
 import { CloudField } from './clouds';
 import type { Balloon } from '../content/world/objects';
+import { Bomb, Raid } from './raid';
 import { Plane } from './plane';
 
 export interface Weather {
@@ -67,7 +68,7 @@ export type WorldEventKind =
   | 'hit' | 'playerHit' | 'shotDown' | 'bail' | 'chuteLanded' | 'crash' | 'explode' | 'wingOff'
   | 'fire' | 'glycol' | 'oil' | 'pilotWounded' | 'pilotKilled' | 'crewHit' | 'gearDamaged' | 'flapsDamaged'
   | 'landed' | 'ditched' | 'bombsGone' | 'jettison' | 'bounce' | 'touchdown' | 'groundLoop' | 'noseOver'
-  | 'obstacle' | 'liftoff' | 'chuteOpen';
+  | 'obstacle' | 'liftoff' | 'chuteOpen' | 'engineStart' | 'engineCough';
 
 export interface WorldEvent {
   kind: WorldEventKind;
@@ -93,6 +94,12 @@ export class World {
   readonly fragments: Fragment[] = [];
   readonly groundFires: GroundFire[] = [];
   cloudField: CloudField | null = null;
+  readonly raids: Raid[] = [];
+  readonly bombs: Bomb[] = [];
+  /** Where a bomb lands: craters, wrecked hangars, the raid's tally (set by the sortie). */
+  onBombImpact: ((b: Bomb, raid: Raid | undefined) => void) | null = null;
+  /** RAF fighters within this range of a raid's plot make it real. */
+  raidSpawnRange = 30000;
   /** Barrage balloons (and their cables) — dangerous to fly into. */
   balloons: Balloon[] = [];
   /** Per-tick events (consumed by the screen for sound, R/T, haptics). */
@@ -106,6 +113,12 @@ export class World {
   cheats = { invulnerable: false, unlimitedAmmo: false };
   private nextId = 1;
   private ctx: AIContext;
+
+  /** The AI's view of the world (for driving the player's seat in tests and the replay autopilot). */
+  get aiContext(): AIContext {
+    this.ctx.time = this.time;
+    return this.ctx;
+  }
 
   constructor(readonly seed: number, readonly ground: GroundModel, weather?: Partial<Weather>) {
     this.rng = new Rng(seed);
@@ -124,6 +137,61 @@ export class World {
 
   get time(): number {
     return this.tick * TUNING.sim.dt;
+  }
+
+  addRaid(r: Raid): Raid {
+    r.drop = (raid, p, jettison) => this.dropBombs(raid, p, jettison);
+    this.raids.push(r);
+    return r;
+  }
+
+  dropBombs(raid: Raid, p: Plane, jettison: boolean): void {
+    if (p.bombs <= 0) return;
+    const sticks = Math.max(1, Math.round(p.bombs / 250));
+    for (let i = 0; i < sticks; i++) {
+      const b = new Bomb(raid.id, p.id, p.bombs / sticks);
+      b.pos.copy(p.pos).addScaled(p.fs.forward(), -i * 12);
+      b.pos.y -= 1.5;
+      b.vel.copy(p.fs.vel);
+      this.bombs.push(b);
+    }
+    raid.bombsDropped += p.bombs;
+    p.bombs = 0;
+    this.emit({ kind: jettison ? 'jettison' : 'bombsGone', planeId: p.id, pos: p.pos.clone() });
+  }
+
+  private raidsStep(dt: number): void {
+    for (const r of this.raids) {
+      r.step(dt, this.time);
+      if (!r.spawned && r.started) {
+        for (const p of this.planes) {
+          if (p.side !== 'raf' || !p.alive) continue;
+          if (p.pos.distTo(r.plot) < this.raidSpawnRange) { r.spawn(this, this.rng.fork(`raid${r.id}`)); break; }
+        }
+      }
+    }
+    for (const b of this.bombs) {
+      b.vel.y -= 9.81 * dt;
+      b.vel.scale(1 - 0.02 * dt);
+      b.pos.addScaled(b.vel, dt);
+    }
+    for (let i = this.bombs.length - 1; i >= 0; i--) {
+      const b = this.bombs[i];
+      const h = this.ground.heightAt(b.pos.x, b.pos.z);
+      if (b.pos.y > h) continue;
+      this.bombs.splice(i, 1);
+      b.pos.y = h;
+      const sea = this.ground.surfaceAt(b.pos.x, b.pos.z) === 'sea';
+      for (let k = 0; k < 4; k++) this.puff(b.pos.clone().add(new Vec3(this.rng.signed() * 10, 2, this.rng.signed() * 10)), sea ? 'splash' : k < 2 ? 'flash' : 'pall', sea ? 6 : 8, sea ? 3 : k < 2 ? 0.6 : 20, new Vec3(0, 4, 0));
+      // Aircraft on the ground nearby are damaged.
+      for (const p of this.planes) {
+        if (!p.fs.onGround || p.pos.distTo(b.pos) > 45) continue;
+        for (const e of applyHit(p.damage, p.type, 'fuselage', 12, true, -1, this.rng)) this.onDamageEvent(p, e, -1);
+      }
+      const raid = this.raids.find((r) => r.id === b.raidId);
+      if (raid && Math.hypot(b.pos.x - raid.target.x, b.pos.z - raid.target.z) < 600) raid.bombsOnTarget += b.kg;
+      this.onBombImpact?.(b, raid);
+    }
   }
 
   addPlane(type: AircraftId, side: Side, callsign: string, fuelFrac = 1, convergenceM = 274): Plane {
@@ -282,6 +350,7 @@ export class World {
     for (const p of this.planes) {
       if (!p.airborneObject) continue;
       p.prevPos.copy(p.pos);
+      if (p.isPlayer && player?.cmds) for (const cmd of player.cmds) this.playerCommand(p, cmd);
       if (p.isPlayer && player && p.status === 'flying') {
         const c = p.ctl;
         c.pitch = player.pitch; c.roll = player.roll; c.yaw = player.yaw;
@@ -311,6 +380,7 @@ export class World {
       if (p.fs.events.length && !p.isPlayer) p.fs.events.length = 0;
     }
     this.bulletsStep(dt);
+    this.raidsStep(dt);
     this.objectsStep(dt);
   }
 
@@ -508,6 +578,24 @@ export class World {
       if (q.pos.distTo(p.pos) < 7000 && this.losClear(q.pos, p.pos)) { p.seenCrash = true; break; }
     }
     this.emit({ kind: 'crash', planeId: p.id, pos: p.pos.clone() });
+  }
+
+  /** Commands that change the player's aircraft. (Sortie-level ones are handled by the sortie.) */
+  playerCommand(p: Plane, cmd: string): void {
+    const fs = p.fs;
+    switch (cmd) {
+      case 'gear':
+        if (fs.type.gear === 'fixed' || fs.onGround) break;
+        if (fs.type.gear === 'pump' && fs.gearCmd < 0.5 && fs.gear > 0.02) break; // keep pumping
+        fs.gearCmd = fs.gearCmd > 0.5 ? 0 : 1;
+        break;
+      case 'flaps':
+        fs.flapsCmd = fs.flapsCmd > 0.5 ? 0 : 1;
+        break;
+      case 'bailOut':
+        if (!fs.onGround && fs.agl > 120) this.bailOut(p);
+        break;
+    }
   }
 
   /** Begin bailing out (player request or AI decision). */

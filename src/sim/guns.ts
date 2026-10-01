@@ -131,8 +131,9 @@ export function stepGunner(
   g.burst -= dt;
   if (g.burst <= 0) { g.pause = rng.range(0.6, 2.0); return false; }
   const aim = leadPoint(gunPos, ownVel, best.pos, best.vel, type.muzzle);
-  // Aim error: a few metres at the target, worse for green gunners and at long range.
-  const err = (1.4 - skill) * (2 + bd / 80);
+  // Aim error: flexible guns from a moving, vibrating bomber were not
+  // accurate. Worse for green gunners and much worse at long range.
+  const err = (TUNING.guns.gunnerErrBase - skill) * (3 + bd / TUNING.guns.gunnerErrRange);
   aim.x += rng.gauss() * err; aim.y += rng.gauss() * err; aim.z += rng.gauss() * err;
   const dir = aim.sub(gunPos).normalize();
   // Must still be within the arc after error.

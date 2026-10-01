@@ -5,7 +5,7 @@ import type { App, Screen } from '../app';
 import { clamp, DEG, MPS_TO_MPH, M_TO_FT, Quat, Vec3 } from '../core/math';
 import { Rng } from '../core/rng';
 import { ContextButton } from '../input/devices';
-import { ControlFrame, quantiseControls } from '../input/input';
+import { ControlFrame, quantiseControls, SimCmd } from '../input/input';
 import { Camera } from '../render/camera';
 import { cockpitLayout, CockpitLayout, drawCanopyFrame, drawGunsight, drawOilScreen, drawPanel, drawRearFrame, viewMessage } from '../render/cockpit';
 import { noEffects, ScreenEffects } from '../render/display';
@@ -90,8 +90,7 @@ export class FlightScreen implements Screen {
     if (s.consume('timeDown')) this.timeIdx = Math.max(0, this.timeIdx - 1);
     if (s.consume('panel')) { this.app.settings.slimPanel = !this.app.settings.slimPanel; this.L = cockpitLayout(this.app.settings.slimPanel); this.app.saveSettings(); }
     if (s.consume('boost')) this.boostToggle = !this.boostToggle;
-    const p = this.player;
-    if (s.consume('flaps')) p.fs.flapsCmd = p.fs.flapsCmd > 0.5 ? 0 : 1;
+    if (s.consume('flaps')) this.cmd('flaps');
     if (s.consume('gear')) this.gearAction();
     if (s.consume('bailOut')) this.requestBail();
     if (this.debug) this.debugTaps();
@@ -103,7 +102,7 @@ export class FlightScreen implements Screen {
     const p = this.player;
     if (p.fs.onGround || (p.status !== 'flying' && p.status !== 'wreck')) return;
     if (p.fs.agl < 150) { this.flashMessage('TOO LOW TO JUMP!'); return; }
-    this.world.bailOut(p);
+    this.cmd('bailOut');
     this.flashMessage('CANOPY OPEN - GETTING OUT', 2);
   }
 
@@ -271,13 +270,18 @@ export class FlightScreen implements Screen {
   protected hitFlash = 0;
   protected woundFlash = 0;
 
+  /** Commands queued for the next tick (recorded for replays). */
+  protected pendingCmds: SimCmd[] = [];
+
+  protected cmd(c: SimCmd): void {
+    this.pendingCmds.push(c);
+  }
+
   protected gearAction(): void {
     const fs = this.player.fs;
     if (fs.type.gear === 'fixed' || fs.onGround) return;
-    // Spitfire: once the selector is up, further presses just keep pumping.
-    if (fs.type.gear === 'pump' && fs.gearCmd < 0.5 && fs.gear > 0.02) return;
-    fs.gearCmd = fs.gearCmd > 0.5 ? 0 : 1;
-    if (fs.type.gear === 'pump' && fs.gearCmd < 0.5) this.flashMessage('PUMP THE GEAR UP (HOLD GEAR)', 2);
+    if (fs.type.gear === 'pump' && fs.gearCmd > 0.5) this.flashMessage('PUMP THE GEAR UP (HOLD GEAR)', 2);
+    this.cmd('gear');
   }
 
   protected cycleView(): void {
@@ -351,6 +355,7 @@ export class FlightScreen implements Screen {
     const s = this.app.input;
     const f = quantiseControls(s);
     f.boost = this.boostToggle;
+    if (this.pendingCmds.length) { f.cmds = this.pendingCmds; this.pendingCmds = []; }
     return f;
   }
 

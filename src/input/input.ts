@@ -71,8 +71,14 @@ export function stickCurve(x: number): number {
   return Math.sign(x) * v;
 }
 
+/** Discrete commands, recorded with the controls so replays are exact. */
+export type SimCmd =
+  | 'gear' | 'flaps' | 'bailOut' | 'primer' | 'mags' | 'starter' | 'startAll'
+  | 'tallyHo' | 'order1' | 'order2' | 'order3' | 'order4' | 'canopy';
+
 /** Control inputs for one simulation tick, quantised so replays are exact. */
 export interface ControlFrame {
+  cmds?: SimCmd[];
   pitch: number;
   roll: number;
   yaw: number;

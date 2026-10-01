@@ -91,7 +91,9 @@ export interface AircraftModelSpec {
 
 const upperOf = (scheme: AircraftModelSpec['scheme'], f: number): MaterialName => {
   if (scheme === 'raf') return f < 0.5 ? 'rafGreen' : 'rafEarth';
-  return f < 0.5 ? 'lwUpper' : 'lwUpper';
+  // Bombers wore the darker RLM 70/71 greens; fighters the 71/02 greys.
+  if (scheme === 'lwBomber') return f < 0.5 ? 'lwBomber' : 'lwUpper';
+  return 'lwUpper';
 };
 const underOf = (scheme: AircraftModelSpec['scheme']): MaterialName => (scheme === 'raf' ? 'rafSky' : 'lwUnder');
 
@@ -251,7 +253,7 @@ function buildDetail(spec: AircraftModelSpec, detail: number): Model {
       if (s.paint) return s.paint;
       if (spec.noseYellow && seg === sorted.length - 2 && detail < 2) return 'yellow';
       if (ny < -0.45) return underOf(spec.scheme);
-      if (spec.scheme !== 'raf' && Math.abs(nx) > 0.7 && ny < 0.2) return 'lwUnder'; // RLM 65 fuselage sides
+      if (spec.scheme === 'lw' && Math.abs(nx) > 0.7 && ny < 0.2) return 'lwUnder'; // fighters: RLM 65 fuselage sides
       return upperOf(spec.scheme, (hash3(seg, side, 11) & 255) / 255);
     },
     'metal',
@@ -270,8 +272,20 @@ function buildDetail(spec: AircraftModelSpec, detail: number): Model {
       const s2 = { z: nc.zFront, pts: ring({ z: 0, w: nc.r * 0.8, top: nc.y + nc.r * 0.8, bot: nc.y - nc.r * 0.8 }, ringN).map(([x, y]) => [x + nc.x, y] as [number, number]), cy: nc.y };
       const rs = detail === 2 ? [s0, s2] : [s0, s1, s2];
       b.loft(rs, (_nx, ny) => (ny < -0.4 ? underOf(spec.scheme) : upperOf(spec.scheme, 0.3)), 'metal', null);
-      if (detail === 0) b.disc('metal', [nc.x, nc.y, nc.zFront + 0.12], nc.r * 1.5, [0, 0, 1], 5);
-      if (detail === 0) b.disc('metal', [nc.x, nc.y, nc.zFront + 0.12], nc.r * 1.5, [0, 0, -1], 5);
+      if (detail === 0) {
+        // Three thin blades, as for single-engined types.
+        b.part = PART.PROP;
+        for (let k = 0; k < 3; k++) {
+          const a = (k / 3) * Math.PI * 2 + 0.5 + nc.x;
+          const ca = Math.cos(a), sa = Math.sin(a), r = nc.r * 2.1, z = nc.zFront + 0.1;
+          b.plate('metal', 'metal', [
+            [nc.x + ca * 0.12 - sa * 0.06, nc.y + sa * 0.12 + ca * 0.06, z],
+            [nc.x + ca * r - sa * 0.09, nc.y + sa * r + ca * 0.09, z],
+            [nc.x + ca * r + sa * 0.09, nc.y + sa * r - ca * 0.09, z],
+            [nc.x + ca * 0.12 + sa * 0.06, nc.y + sa * 0.12 - ca * 0.06, z],
+          ], [0, 0, 1]);
+        }
+      }
       b.part = PART.BODY;
     }
   }

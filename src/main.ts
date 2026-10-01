@@ -1,8 +1,8 @@
 import { App } from './app';
+import { BenchScreen } from './screens/bench';
+import { allModels } from './content/models';
 import { Vec3 } from './core/math';
 import { Rng } from './core/rng';
-import { registerModel } from './content/models';
-import { bf109Model } from './content/models/bf109';
 import { lonLatToXZ, worldMap } from './content/world/map';
 import { WorldObjects } from './content/world/objects';
 import { makeWorldLayer } from './render/worldLayer';
@@ -12,10 +12,10 @@ import { freeFlight } from './sim/scenarios';
 import { dayOfYear, sunDirection } from './sim/sun';
 import { generateWeather, windVector } from './sim/weather';
 
-registerModel('bf109', bf109Model);
 
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
 const app = new App(canvas, (a) => {
+  if (new URLSearchParams(location.search).has('models')) return new BenchScreen(a, () => {}, allModels());
   const map = worldMap();
   const objs = new WorldObjects(map);
   const q = new URLSearchParams(location.search);

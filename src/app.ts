@@ -39,6 +39,8 @@ export class App {
   private canvas: HTMLCanvasElement;
   /** Hooks for subsystems that want a per-frame callback (audio). */
   readonly frameHooks: ((dt: number) => void)[] = [];
+  /** One-shot sound effect by name; replaced by the audio engine when it starts. */
+  sound: (name: string, volume?: number, pitch?: number) => void = () => {};
 
   constructor(canvas: HTMLCanvasElement, first: (app: App) => Screen) {
     this.canvas = canvas;

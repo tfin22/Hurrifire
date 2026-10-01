@@ -98,6 +98,9 @@ export const TUNING = {
     /** Each simulated rifle-calibre bullet stands for this many rounds. */
     roundsPerBullet: 2,
     gunnerRange: 650,
+    /** Gunner aim error (m) = (base − skill) × (3 + range / errRange). */
+    gunnerErrBase: 2.2,
+    gunnerErrRange: 40,
     /** Seconds to change an MG 15 drum. */
     drumChange: 3.5,
     convergenceYards: [250, 300, 400] as const,
@@ -156,6 +159,36 @@ export const TUNING = {
     diveSeconds: 7,
     /** Seconds after a fatal hit before crew start to jump. */
     bailDelay: [2, 6] as const,
+  },
+
+  sortie: {
+    /** Seconds of cranking before the engine catches (or doesn't). */
+    crankToCatch: 2.2,
+    /** Tally-ho needs an enemy within this range (m). */
+    tallyRange: 9000,
+  },
+
+  controller: {
+    firstVectorDelay: 20,
+    vectorEvery: 75,
+    /** "Bandits N miles" calls inside this range (m). */
+    closeRange: 16000,
+    closeEvery: 45,
+    /** Plot position error (m, full width). */
+    plotError: 3000,
+    /** Speed the controller assumes the squadron makes good in the climb (m/s). */
+    assumedSpeed: 105,
+    /** Long intercepts get "buster". */
+    busterTime: 420,
+    /** Don't pancake before this many seconds. */
+    minSortie: 240,
+  },
+
+  claims: {
+    /** A target you hit hard and saw smoking/diving away gets claimed as destroyed this often. */
+    overclaimSmoking: 0.6,
+    /** Damage fraction that counts as "hit hard" for a claim. */
+    heavyDamage: 0.35,
   },
 
   landing: {

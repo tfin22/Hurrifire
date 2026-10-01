@@ -107,6 +107,7 @@ export const MAT = {
   rafSky: { ramp: [C.GREY_L, C.SKY_D, C.SKY_L] },
   lwUpper: { ramp: [C.LW_D, C.LW_M, C.LW_L] },
   lwUnder: { ramp: [C.LW_L, C.HAZE, C.LW_BLUE] },
+  lwBomber: { ramp: [C.FIELD_D, C.LW_D, C.LW_M] },
   black: { ramp: [C.BLACK, C.SMOKE, C.GREY_D] },
   white: { ramp: [C.GREY_L, C.CHALK, C.WHITE] },
   yellow: { ramp: [C.GOLD, C.FIRE_Y, C.FIRE_Y] },

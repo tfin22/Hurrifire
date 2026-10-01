@@ -224,7 +224,7 @@ export class FighterBrain implements Brain {
         c.roll = rollTo(fs, 0, 3);
         c.pitch = Math.abs(fs.roll) < 1.2 ? stickForG(me.type, Math.min(gLim, 4.5)) : 0;
         c.throttle = 1;
-        if (fs.vel.y > 2 && fs.pos.y - ctx.groundAt(fs.pos.x, fs.pos.z) > TUNING.ai.groundAvoidAgl) this.set(this.targetId >= 0 ? 'attack' : 'patrol');
+        if (fs.vel.y > 2 && fs.pos.y - ctx.groundAt(fs.pos.x, fs.pos.z) > TUNING.ai.groundAvoidAgl) this.set(this.targetId >= 0 ? 'attack' : this.opts.leader ? 'formation' : 'patrol');
         break;
       }
       case 'formation': {
