@@ -1,18 +1,17 @@
 import { App } from './app';
-import { Vec3 } from './core/math';
 import { TestTerrain } from './content/world/testTerrain';
 import { FlightScreen } from './screens/flight';
-import { World } from './sim/world';
+import { oneVersusOne } from './sim/scenarios';
+import { registerModel } from './content/models';
+import { bf109Model } from './content/models/bf109';
+
+registerModel('bf109', bf109Model);
 
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
 const app = new App(canvas, (a) => {
   const terrain = new TestTerrain();
-  const world = new World(1940, terrain);
-  const p = world.addPlane('spitfire', 'raf', 'Gannet Leader', 0.9);
-  p.isPlayer = true;
-  world.player = p;
-  p.fs.setAirborne(new Vec3(0, 1500, 0), 0.4, 110);
-  a.input.throttle = 0.8;
+  const world = oneVersusOne(1940, terrain, 'spitfire', 'average', a.settings.convergenceYards * 0.9144);
+  a.input.throttle = 0.85;
   return new FlightScreen(a, { world, terrain, onExit: () => location.reload() });
 });
 app.start();

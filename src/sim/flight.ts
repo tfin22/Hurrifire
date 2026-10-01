@@ -177,6 +177,7 @@ export class FlightState {
     this.engine = 'running';
     this.rpm = 2600;
     updateDerived(this, 0);
+    this.ias = speed * Math.sqrt(airDensity(pos.y) / 1.225);
   }
 
   /** Sit on the ground at rest in the three-point attitude. */

@@ -55,10 +55,12 @@ export function buildCopper(copper: Uint8Array, p: SkyParams): void {
     copper[k + 2] = hz[2] + (zen[2] - hz[2]) * t;
   }
   // Ground: haze at the horizon, the base colour below; haze stronger with height.
-  const gh: [number, number, number] = [hz[0] * 0.92, hz[1] * 0.93, hz[2] * 0.95];
+  // The far ground meets the horizon in the palette's HAZE colour, so the
+  // furthest terrain band (which fogs to HAZE) blends into it.
+  const gh: [number, number, number] = [153 * L, 170 * L, 187 * L];
   const g = p.ground.map((v) => v * L) as [number, number, number];
   for (let i = 0; i < GROUND_N; i++) {
-    const t = Math.pow(i / (GROUND_N - 1), 0.35 + 0.5 * altK + 0.3 * p.haze);
+    const t = Math.pow(i / (GROUND_N - 1), 0.8 + 0.8 * altK + 0.3 * p.haze);
     const k = (SKY_N + i) * 3;
     copper[k] = gh[0] + (g[0] - gh[0]) * t;
     copper[k + 1] = gh[1] + (g[1] - gh[1]) * t;

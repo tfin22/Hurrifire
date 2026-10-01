@@ -3,9 +3,11 @@
 import type { AircraftId } from '../aircraft';
 import type { Model } from '../../render/model';
 import { spitfireModel } from './spitfire';
+import { bf109Model } from './bf109';
 
 const registry: Partial<Record<AircraftId, Model>> = {
   spitfire: spitfireModel,
+  bf109: bf109Model,
 };
 
 export function registerModel(id: AircraftId, m: Model): void {

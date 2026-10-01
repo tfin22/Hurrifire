@@ -149,6 +149,8 @@ export function shadeIndex(mat: Material, light: number, fog: number): number {
   let step = mat.unlit ? n - 1 : Math.min(n - 1, Math.max(0, Math.floor(light * n)));
   if (mat.noFog || fog <= 0) return ramp[step];
   if (fog >= 3) return C.HAZE;
-  step += fog;
-  return step >= n ? C.HAZE : ramp[step];
+  // Each fog band steps one place up the ramp, stopping at its lightest
+  // entry; only the last band goes to haze. Patchwork survives into the
+  // distance, just paler.
+  return ramp[Math.min(n - 1, step + fog)];
 }

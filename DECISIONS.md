@@ -83,3 +83,31 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
 - **G tolerance** starts greying at 4.3 g. Sustained 6.5 g blacks out in a
   few seconds, and 7.5 g in about 3. A blacked-out pilot's stick goes
   neutral, which also holds for AI pilots.
+
+## Dogfight
+
+- **Bullets are grouped.** Each simulated rifle-calibre bullet stands for 2
+  real rounds (`TUNING.guns.roundsPerBullet`) with double damage; 20 mm
+  shells are simulated one by one. That keeps eight Brownings plus a sky
+  full of gunners cheap enough for a phone without changing the hit
+  statistics much.
+- **Harmonisation is static.** Guns converge on the sight line at the chosen
+  range for the muzzle velocity alone, as they were harmonised on the
+  ground. In flight the aircraft's own speed makes rounds strike slightly
+  high, which is real. Hits ahead of convergence scatter visibly, as the
+  spec asks; there's a test for it.
+- **Damage overflow.** A part already shot away (elevator, rudder,
+  aileron, radiator) passes further hits to the structure behind it.
+  Without this, a tail control surface shielded the fuselage from a dead
+  astern attack forever.
+- **Fire** is a countdown: about 25–40 s from first flames to the tank going
+  up, depending on how far it has spread. A fast dive may blow it out. The
+  BAIL OUT button shows the seconds left.
+- **AI spotting** uses range against the target's span, a blind spot behind
+  and below, sun glare (a target within ~14° of the sun is roughly 12× harder
+  to see), cloud line of sight and skill. The same rules apply to every AI
+  pilot.
+- **109 tactics.** Disciplined 109 pilots (average/experte) keep their energy:
+  they extend and zoom rather than turn. With a Merlin-engined fighter on
+  their tail they often bunt into a dive, which the pursuer can't follow
+  without cutting out.

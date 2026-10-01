@@ -1,12 +1,23 @@
-// An aircraft in the world: flight state, controls, pilot and (from M4)
-// guns, damage and an AI brain.
+// An aircraft in the world: flight state, controls, pilot, guns, damage and
+// (for everyone but the player) an AI brain.
 
 import { AircraftType, Side } from '../content/aircraft';
 import { FlightControls, FlightMods, FlightState, neutralMods } from './flight';
 import { Physiology } from './physiology';
 import { idleControls } from './ai/pilot';
+import { Armament, GunnerState } from './guns';
+import { DamageState, newDamage } from './damage';
+import type { Brain, Skill } from './ai/types';
+import { skillFor } from './ai/types';
+import { Vec3 } from '../core/math';
 
-export type PlaneStatus = 'flying' | 'landed' | 'crashed' | 'bailedOut' | 'ditched' | 'destroyed';
+export type PlaneStatus =
+  | 'flying'    // under control (in the air or on the ground)
+  | 'wreck'     // falling out of control
+  | 'landed'    // down and stopped safely (or forced-landed)
+  | 'crashed'   // hit the ground as a wreck
+  | 'ditched'
+  | 'destroyed'; // blew up in the air
 
 export class Plane {
   readonly fs: FlightState;
@@ -15,13 +26,39 @@ export class Plane {
   readonly pilot = new Physiology();
   status: PlaneStatus = 'flying';
   isPlayer = false;
+  /** Pilot's trigger this tick. */
+  trigger = false;
+  armament: Armament;
+  gunners: GunnerState[];
+  damage: DamageState;
+  brain: Brain | null = null;
+  skill: Skill;
+  /** Fatigue 0..1 (campaign): slows spotting and lowers G tolerance. */
+  fatigue = 0;
+  /** Crew still aboard. */
+  crewAboard: number;
+  /** Crew have decided to bail; jumps happen one by one. */
+  bailing = false;
+  bailTimer = 0;
   /** Hit flash timer (render only reads it). */
   flash = 0;
   flashParts = 0;
   /** Parts no longer attached (a wing that has come off). */
   hiddenParts = 0;
-  /** Seconds since last fired (for sounds). */
   firing = false;
+  /** Position last tick (for bullet hit tests in the plane's frame). */
+  readonly prevPos = new Vec3();
+  /** When it went down, and was it seen to crash by its enemies. */
+  downAt = -1;
+  seenCrash = false;
+  /** Formation / unit bookkeeping. */
+  unit = '';
+  /** Who shot it down (most damage). */
+  killedBy = -1;
+  /** Bombs still aboard (bombers). */
+  bombs: number;
+  /** Smoke emission accumulator. */
+  smokeAcc = 0;
 
   constructor(
     readonly id: number,
@@ -29,13 +66,26 @@ export class Plane {
     readonly side: Side,
     public callsign: string,
     fuelFrac = 1,
+    convergenceM = 274,
   ) {
     this.fs = new FlightState(type, fuelFrac);
     this.mods = neutralMods(type.engines);
+    this.armament = new Armament(type, convergenceM);
+    this.gunners = type.gunners.map((g) => new GunnerState(g));
+    this.damage = newDamage(type);
+    this.skill = skillFor('average');
+    this.crewAboard = type.crew;
+    this.bombs = type.bombLoad;
   }
 
+  /** In the fight: flying under control. */
   get alive(): boolean {
-    return this.status === 'flying' || this.status === 'landed';
+    return this.status === 'flying';
+  }
+
+  /** Still a physical object in the sky (includes falling wrecks). */
+  get airborneObject(): boolean {
+    return this.status === 'flying' || this.status === 'wreck';
   }
 
   get pos() {

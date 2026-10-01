@@ -148,6 +148,7 @@ const fighterZones = (len: number, span: number, nose: number): ZoneDef[] => [
   { id: 'fuselage', pos: [0, 0.1, -2.2], r: 0.7, hp: 24 },
   { id: 'elevator', pos: [0, 0.2, -len * 0.48], r: 0.8, hp: 8 },
   { id: 'rudder', pos: [0, 0.9, -len * 0.5], r: 0.5, hp: 8 },
+  { id: 'tail', pos: [0, 0.3, -len * 0.42], r: 0.75, hp: 22 },
 ];
 
 const twinZones = (len: number, span: number, ex: number, nose: number, crewZ: number): ZoneDef[] => [
@@ -163,6 +164,7 @@ const twinZones = (len: number, span: number, ex: number, nose: number, crewZ: n
   { id: 'fuselage', pos: [0, 0, -len * 0.2], r: 1.0, hp: 40 },
   { id: 'elevator', pos: [0, 0.4, -len * 0.47], r: 1.2, hp: 12 },
   { id: 'rudder', pos: [0, 1.2, -len * 0.5], r: 0.8, hp: 10 },
+  { id: 'tail', pos: [0, 0.5, -len * 0.42], r: 1.0, hp: 34 },
   { id: 'gear', pos: [ex, -0.6, 0.5], r: 0.6, hp: 8 },
   { id: 'flaps', pos: [ex * 1.1, -0.2, -1.2], r: 0.8, hp: 8 },
 ];

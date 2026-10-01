@@ -16,6 +16,10 @@ import { fillRect, rasterStats } from '../render/raster';
 import { SceneRenderer } from '../render/scene';
 import { TerrainSource } from '../render/terrain';
 import { Plane } from '../sim/plane';
+import { leadPoint } from '../sim/ballistics';
+import { damageFraction, fireTimeLeft } from '../sim/damage';
+import { haptics } from '../input/devices';
+import { line, rectOutline, pset } from '../render/raster';
 import { World } from '../sim/world';
 import { TUNING } from '../tuning';
 
@@ -85,8 +89,90 @@ export class FlightScreen implements Screen {
     const p = this.player;
     if (s.consume('flaps')) p.fs.flapsCmd = p.fs.flapsCmd > 0.5 ? 0 : 1;
     if (s.consume('gear')) this.gearAction();
+    if (s.consume('bailOut')) this.requestBail();
+    if (this.debug) this.debugTaps();
+    this.consumeEvents();
     if (s.lookBack && this.app.input.roll !== 0) this.lookSide = this.app.input.roll > 0 ? 1 : -1;
   }
+
+  protected requestBail(): void {
+    const p = this.player;
+    if (p.fs.onGround || (p.status !== 'flying' && p.status !== 'wreck')) return;
+    if (p.fs.agl < 150) { this.flashMessage('TOO LOW TO JUMP!'); return; }
+    this.world.bailOut(p);
+    this.flashMessage('CANOPY OPEN - GETTING OUT', 2);
+  }
+
+  /** The player's parachute, once out. */
+  protected playerChute() {
+    return this.world.parachutes.find((c) => c.fromPlane === this.player.id && c.name === 'pilot');
+  }
+
+  protected debugTaps(): void {
+    const s = this.app.input;
+    for (const t of s.taps) {
+      if (t.x < 250 || t.y > 120) continue;
+      const i = Math.floor((t.y - 64) / 9);
+      const items = this.debugItems();
+      if (i >= 0 && i < items.length) items[i].act();
+    }
+  }
+
+  protected debugItems(): { label: string; act: () => void }[] {
+    const ch = this.world.cheats;
+    return [
+      { label: `INVULN ${ch.invulnerable ? 'ON' : 'OFF'}`, act: () => (ch.invulnerable = !ch.invulnerable) },
+      { label: `AMMO ${ch.unlimitedAmmo ? 'INF' : 'NORM'}`, act: () => (ch.unlimitedAmmo = !ch.unlimitedAmmo) },
+      { label: 'STOP ENGINE', act: () => { this.player.fs.engine = 'dead'; } },
+      { label: 'GLYCOL HIT', act: () => { this.player.damage.glycol = 0.6; } },
+      { label: 'FIRE!', act: () => { this.player.damage.fire = 0.05; } },
+    ];
+  }
+
+  /** Per-frame world events: messages, haptics, kill calls. */
+  protected consumeEvents(): void {
+    const w = this.world;
+    const me = this.player;
+    for (const e of w.events) this.onWorldEvent(e, me);
+    w.events.length = 0;
+  }
+
+  protected onWorldEvent(e: import('../sim/world').WorldEvent, me: Plane): void {
+    const w = this.world;
+    switch (e.kind) {
+      case 'playerHit':
+        haptics.pulse(40);
+        this.hitFlash = 0.15;
+        break;
+      case 'shotDown':
+        if (e.otherId === me.id) {
+          const v = w.planeById(e.planeId);
+          this.flashMessage(v ? `${v.type.short.toUpperCase()} GOING DOWN!` : 'HE\'S GOING DOWN!', 3);
+        } else if (e.planeId === me.id) this.flashMessage('YOU\'VE HAD IT - GET OUT!', 4);
+        break;
+      case 'fire':
+        if (e.planeId === me.id) { this.flashMessage('FIRE! BAIL OUT!', 4); haptics.pulse([80, 40, 80]); }
+        break;
+      case 'glycol':
+        if (e.planeId === me.id) this.flashMessage('GLYCOL LEAK - WATCH THE TEMPERATURE', 3);
+        break;
+      case 'oil':
+        if (e.planeId === me.id) this.flashMessage('OIL ON THE WINDSCREEN', 3);
+        break;
+      case 'pilotWounded':
+        if (e.planeId === me.id) { this.flashMessage('YOU\'RE HIT - WOUNDED', 3); this.woundFlash = 1; }
+        break;
+      case 'wingOff':
+        if (e.otherId === me.id) this.flashMessage('HIS WING\'S COME OFF!', 3);
+        break;
+      case 'bail':
+        if (e.planeId !== me.id && w.planeById(e.planeId)?.side !== me.side) this.flashMessage('HE\'S BALED OUT', 2);
+        break;
+    }
+  }
+
+  protected hitFlash = 0;
+  protected woundFlash = 0;
 
   protected gearAction(): void {
     const fs = this.player.fs;
@@ -175,6 +261,8 @@ export class FlightScreen implements Screen {
     this.world.step(f);
     this.afterTick();
     if (this.messageT > 0) this.messageT -= TUNING.sim.dt;
+    if (this.hitFlash > 0) this.hitFlash -= TUNING.sim.dt;
+    if (this.woundFlash > 0) this.woundFlash -= TUNING.sim.dt * 0.7;
   }
 
   /** Hook for subclasses / later systems. */
@@ -210,6 +298,14 @@ export class FlightScreen implements Screen {
     const L = this.L;
     const s = this.app.input;
     let headTurned = false;
+    const chute = this.playerChute();
+    if (chute) {
+      cam.setViewport(0, 0, 320, 256, TUNING.render.fovDeg);
+      const at = chute.pos.clone().add(new Vec3(14, 6, -10));
+      cam.pos.copy(at);
+      cam.setOrientation(Quat.lookRotation(chute.pos.clone().add(new Vec3(0, 3, 0)).sub(at)));
+      return { headTurned: true };
+    }
     if (this.view === 'cockpit' || this.view === 'padlock') {
       cam.setViewport(0, 0, 320, s.lookBack || this.view === 'padlock' ? 256 : L.panelTop, TUNING.render.fovDeg, s.lookBack || this.view === 'padlock' ? 128 : L.viewCy);
       const eye = fs.q.rotate(new Vec3(0, 0.75, -0.3));
@@ -261,7 +357,7 @@ export class FlightScreen implements Screen {
     this.scene.lodBias = this.app.settings.retro ? 1 : 0;
     const { headTurned } = this.setupCamera();
     const p = this.player;
-    const inside = this.view === 'cockpit' || this.view === 'padlock';
+    const inside = (this.view === 'cockpit' || this.view === 'padlock') && !this.playerChute();
     this.scene.draw(fb, this.cam, this.world, { skipPlaneId: inside ? p.id : undefined, copper: this.app.display.copper });
     const s = this.app.input;
     if (inside && !headTurned && !s.lookBack) {
@@ -272,9 +368,10 @@ export class FlightScreen implements Screen {
       drawPanel(fb, this.L, this.panelData(), this.app.settings.slimPanel);
     } else if (inside && s.lookBack) {
       drawRearFrame(fb, this.lookSide);
-    } else if (this.view === 'padlock') {
+    } else if (this.view === 'padlock' && inside) {
       this.drawPadlockIndicator(fb);
     }
+    if (inside && !s.lookBack && !headTurned) this.drawAssist(fb);
     this.drawHud(fb);
     if (this.messageT > 0) viewMessage(fb, this.message, 40, C.WHITE);
     if (this.timeIdx > 0) drawText(fb, `TIME x${TUNING.sim.timeCompression[this.timeIdx]}`, 250, 22, C.SIGHT, 'tiny');
@@ -284,7 +381,44 @@ export class FlightScreen implements Screen {
   }
 
   protected oilAmount(): number {
-    return 0;
+    const p = this.player;
+    return p.type.engines === 1 ? Math.min(1, p.damage.oil * 1.2) : 0;
+  }
+
+  /** Assist mode: lead indicator on the nearest target and small markers on enemies in range. */
+  protected drawAssist(fb: FrameBuffer): void {
+    if (!this.app.settings.assist) return;
+    const me = this.player;
+    const cam = this.cam;
+    fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);
+    const out = { x: 0, y: 0, z: 0 };
+    let nearest: Plane | null = null, nd = Infinity;
+    for (const q of this.world.planes) {
+      if (q === me || !q.alive || q.side === me.side) continue;
+      const d = q.pos.distTo(me.pos);
+      if (d > TUNING.assist.markerRange) continue;
+      if (d < nd) { nd = d; nearest = q; }
+      if (!cam.project(q.pos, out)) continue;
+      const r = Math.max(3, (cam.f * q.type.span * 0.5) / out.z + 2);
+      // Corner brackets.
+      const x0 = out.x - r, x1 = out.x + r, y0 = out.y - r, y1 = out.y + r;
+      for (const [x, y, dx, dy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]] as const) {
+        line(fb, x, y, x + dx * 2, y, C.FIRE_R);
+        line(fb, x, y, x, y + dy * 2, C.FIRE_R);
+      }
+      if (d < 1500) drawText(fb, `${Math.round(d * 1.0936 / 10) * 10}`, x1 + 2, y0, C.FIRE_R, 'tiny');
+    }
+    if (nearest && nd < 900) {
+      const muzzle = me.armament.guns[0]?.type.muzzle ?? 745;
+      // The guns fire from the wings but converge on the sight line: aim the sight at the lead point.
+      const lp = leadPoint(cam.pos, me.fs.vel, nearest.pos, nearest.fs.vel, muzzle);
+      if (cam.project(lp, out)) {
+        line(fb, out.x - 3, out.y, out.x + 3, out.y, C.SIGHT);
+        line(fb, out.x, out.y - 3, out.x, out.y + 3, C.SIGHT);
+        pset(fb, out.x, out.y, C.WHITE);
+      }
+    }
+    fb.resetClip();
   }
 
   protected drawSight(fb: FrameBuffer): void {
@@ -338,6 +472,7 @@ export class FlightScreen implements Screen {
       boostOn: fs.boostOn,
       fuelGallons: fs.fuel / GALLON_KG,
       fuelCapGallons: fs.type.fuelCapacity / GALLON_KG,
+      ammoFrac: this.app.settings.ammoBar && this.app.settings.assist ? this.player.armament.frac : undefined,
     };
   }
 
@@ -365,10 +500,27 @@ export class FlightScreen implements Screen {
       `THR ${fs.throttle.toFixed(2)} RPM ${fs.rpm.toFixed(0)} RAD ${fs.radTemp.toFixed(0)} FUEL ${fs.fuel.toFixed(0)}KG ${fs.engine.toUpperCase()}`,
       `GREY ${this.player.pilot.grey.toFixed(2)} BLK ${this.player.pilot.black.toFixed(2)} SPIN ${fs.spin.toFixed(2)} TICK ${this.world.tick}`,
     ];
+    const d = this.player.damage;
+    lines.push(`DMG ${(damageFraction(d) * 100).toFixed(0)}% GLY ${d.glycol.toFixed(2)} OIL ${d.oil.toFixed(2)} FIRE ${d.fire.toFixed(2)} PILOT ${d.pilot} AMMO ${(this.player.armament.frac * 100).toFixed(0)}%`);
+    const hp = Object.entries(d.hp).map(([k, v]) => `${k.slice(0, 4)}${Math.max(0, Math.round(v ?? 0))}`).join(' ');
+    lines.push(hp.slice(0, 78));
     lines.forEach((l, i) => {
       fillRect(fb, 0, 24 + i * 7, l.length * 4 + 2, 7, C.BLACK);
       drawText(fb, l, 1, 25 + i * 7, C.WHITE, 'tiny');
     });
+    this.debugItems().forEach((it, i) => {
+      fillRect(fb, 252, 64 + i * 9, 66, 8, C.BLACK);
+      rectOutline(fb, 252, 64 + i * 9, 66, 8, C.GREY_D);
+      drawText(fb, it.label, 254, 65 + i * 9, C.SIGHT, 'tiny');
+    });
+    // AI state above each aircraft.
+    const out = { x: 0, y: 0, z: 0 };
+    for (const q of this.world.planes) {
+      if (q === this.player || !q.airborneObject) continue;
+      if (!this.cam.project(q.pos, out)) continue;
+      const lab = `${q.type.short} ${q.brain ? q.brain.label() : q.status} ${Math.round(q.pos.distTo(this.player.pos))}M`;
+      drawText(fb, lab.toUpperCase(), out.x - lab.length * 2, out.y - 12, q.side === 'raf' ? C.SKY_L : C.FIRE_Y, 'tiny');
+    }
   }
 
   effects(): ScreenEffects {
@@ -377,6 +529,9 @@ export class FlightScreen implements Screen {
     fx.grey = pil.grey;
     fx.black = pil.black;
     fx.red = pil.red * 0.8;
+    if (this.hitFlash > 0) fx.red = Math.max(fx.red, 0.35);
+    if (this.player.damage.pilot === 'wounded') fx.woundEdge = 0.35 + 0.35 * Math.abs(Math.sin(this.world.time * 5));
+    if (this.woundFlash > 0) fx.red = Math.max(fx.red, this.woundFlash * 0.7);
     return fx;
   }
 
@@ -391,6 +546,9 @@ export class FlightScreen implements Screen {
     if (fs.type.gear !== 'fixed' && !fs.onGround) b.push({ action: 'gear', label: fs.gearCmd > 0.5 ? 'GEAR UP' : 'GEAR DN', hold: 'pump' });
     if (fs.ias < 75) b.push({ action: 'flaps', label: fs.flapsCmd > 0.5 ? 'FLAPS UP' : 'FLAPS DN' });
     b.push({ action: 'boost', label: 'BOOST', lit: this.boostToggle });
+    const p = this.player;
+    const inTrouble = p.status === 'wreck' || p.damage.fire > 0 || fs.engine !== 'running' || damageFraction(p.damage) > 0.15 || p.damage.pilot === 'wounded';
+    if (inTrouble && !fs.onGround && !this.playerChute() && fs.agl > 150) b.push({ action: 'bailOut', label: p.damage.fire > 0 ? `BAIL OUT ${Math.ceil(fireTimeLeft(p.damage))}` : 'BAIL OUT' });
     b.push({ action: 'timeUp', label: `TIME x${TUNING.sim.timeCompression[this.timeIdx]}`, lit: this.timeIdx > 0 });
     if (this.timeIdx > 0) b.push({ action: 'timeDown', label: 'TIME -' });
     return b;
