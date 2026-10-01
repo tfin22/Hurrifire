@@ -1,0 +1,23 @@
+{
+  "name": "scramble",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Scramble! — a personal homage to the Amiga flight sims, Battle of Britain, summer 1940",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build && node scripts/check-size.mjs",
+    "preview": "vite preview --host",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "world": "node scripts/build-world.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^5.0.3"
+  }
+}
