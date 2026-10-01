@@ -207,5 +207,32 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   playtests, where a box of Do 17s shot down a whole section before it
   closed. Aim error grows quickly with range, as flexible guns from a
   moving bomber did.
-- **Quick Combat** currently drops you at height near a random raid. The
-  proper setup screen (type, raid, escort, weather) comes in milestone 8.
+- **Quick Combat** starts you at height, 10 km off a raid of your choosing.
+
+## The raid
+
+- **Escort roles.** Close escort sticks to the bombers and turns on
+  anything that attacks them; top cover sits 2,000 m higher and up-sun and
+  dives on fighters below. Free-hunting sweeps go where they like.
+- **The 110 circle** is shared state: the first 110 to see an RAF fighter
+  within 4 km fixes a centre, and every 110 in the group flies round it,
+  each covering the tail of the one ahead. It breaks up 40 seconds after
+  the last threat. This is what they did, and it makes them stubborn but
+  easy to get away from.
+- **Vic or pairs.** In a tight vic a wingman's spotting is cut to 45%,
+  because he is flying formation on his leader. Pairs (line abreast,
+  wide) spot at full strength. The campaign makes the switch available
+  part way through; Quick Combat uses whatever the date suggests.
+- **15 September** in Quick Combat is the set piece: 33 bombers, 28 escorts
+  and your squadron of 12 in one place, plus the second raid on its way.
+  118 aircraft in all.
+- **Performance.** That raid ran at 17 fps under a 6× CPU throttle in
+  Chrome (a rough stand-in for a mid-range phone). Three things fixed most
+  of it: building for ES2022 (class fields were being transpiled to
+  `defineProperty` calls, which made every `new Vec3` slow), scratch vectors
+  in the flight model instead of allocating about ten vectors per aircraft
+  per tick, and caching each aircraft's flight environment and
+  damage-to-handling result (recomputed on a hit, or once a second as
+  glycol and engines wear). Now about 0.8 ms per tick for the sim and
+  1.8 ms per frame for the render on a desktop: 34 fps at 6×, 48 fps at 4×.
+  On the phone itself the 1990 mode cap is the fallback.

@@ -157,6 +157,8 @@ export const TUNING = {
     zoomSeconds: 6,
     buntSeconds: 1.3,
     diveSeconds: 7,
+    /** Spotting multiplier for a pilot holding a tight vic (watching the leader, not the sky). */
+    vicSpotFactor: 0.45,
     /** Seconds after a fatal hit before crew start to jump. */
     bailDelay: [2, 6] as const,
   },

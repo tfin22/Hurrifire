@@ -20,7 +20,7 @@ const app = new App(canvas, (a) => {
   if (qs.has('models')) return new BenchScreen(a, () => {}, allModels());
   if (!qs.has('free')) {
     const flow = new Flow(a);
-    if (qs.has('qc')) { queueMicrotask(() => flow.quickCombat()); }
+    if (qs.has('qc')) { queueMicrotask(() => flow.fly(flow.game.quickCombatSpec({ playerType: 'spitfire', raid: (qs.get('qc') || 'bombers') as 'bombers', escort: true, weather: 'cumulus', wingmen: +(qs.get('wing') ?? 2) }, 1940))); }
     if (qs.has('scramble')) { queueMicrotask(() => flow.scramble()); }
     return flow.title();
   }

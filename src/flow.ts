@@ -9,7 +9,7 @@ import { DispersalScreen } from './screens/dispersal';
 import { TitleScreen } from './screens/menu';
 import { SortieScreen } from './screens/sortieScreen';
 import { Sortie, SortieSpec } from './sim/sortie';
-import { Vec3 } from './core/math';
+import { QuickCombatScreen } from './screens/quickCombat';
 
 export class Flow {
   readonly game: Game;
@@ -43,14 +43,7 @@ export class Flow {
   }
 
   quickCombat(): void {
-    const spec = this.game.randomScramble((Date.now() & 0x7fffffff) >>> 0);
-    const r = spec.raids[0];
-    spec.start = 'air';
-    // Start at height, a few miles off the raid's track.
-    const p = r.entry.clone().lerp(r.target, 0.3);
-    spec.airStart = { pos: new Vec3(p.x - 6000, r.alt + 600, p.z - 6000), heading: Math.atan2(r.start.x - p.x, r.start.z - p.z) };
-    for (const rs of spec.raids) { rs.delay = 0; rs.start = r.entry.clone().lerp(r.start, 0.3); }
-    this.fly(spec);
+    this.app.setScreen(new QuickCombatScreen(this.app, (cfg) => this.fly(this.game.quickCombatSpec(cfg, (Date.now() & 0x7fffffff) >>> 0)), () => this.toTitle()));
   }
 
   fly(spec: SortieSpec): void {

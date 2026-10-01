@@ -39,6 +39,8 @@ export class App {
   private canvas: HTMLCanvasElement;
   /** Hooks for subsystems that want a per-frame callback (audio). */
   readonly frameHooks: ((dt: number) => void)[] = [];
+  /** Accumulated timings (ms) for profiling. */
+  readonly perf = { sim: 0, render: 0, ticks: 0, frames: 0 };
   /** One-shot sound effect by name; replaced by the audio engine when it starts. */
   sound: (name: string, volume?: number, pitch?: number) => void = () => {};
 
@@ -61,8 +63,8 @@ export class App {
     this.loop = new FixedLoop({
       ticksPerStep: () => this.screen.ticksPerStep?.() ?? 1,
       frame: (dt) => this.frame(dt),
-      tick: () => this.screen.tick(),
-      render: () => this.render(),
+      tick: () => { const t0 = performance.now(); this.screen.tick(); this.perf.sim += performance.now() - t0; this.perf.ticks++; },
+      render: () => { const t0 = performance.now(); this.render(); this.perf.render += performance.now() - t0; this.perf.frames++; },
       renderCap: () => (this.settings.retro ? 12.5 : 0),
     });
   }

@@ -5,6 +5,7 @@
 // Competence depends on skill: green pilots straggle and fixate.
 
 import { clamp, Vec3 } from '../../core/math';
+import { TUNING } from '../../tuning';
 import type { Plane } from '../plane';
 import { flyApproach } from './approach';
 import { FighterBrain } from './fighter';
@@ -27,6 +28,9 @@ export class WingmanBrain implements Brain {
   readonly fighter: FighterBrain;
   order: SquadronOrder = 'reform';
   homeTime = false;
+  /** Flying a tight vic: eyes on the leader, not the sky. */
+  vic = true;
+  private baseSpot = -1;
   private rollDelay: number;
   private rollAt = -1;
   private approachStage = 0;
@@ -95,6 +99,8 @@ export class WingmanBrain implements Brain {
         }
         break;
       case 'air': {
+        if (this.baseSpot < 0) this.baseSpot = me.skill.spot;
+        me.skill.spot = this.vic && this.fighter.state === 'formation' ? this.baseSpot * TUNING.ai.vicSpotFactor : this.baseSpot;
         this.fighter.opts.leader = L && L.alive && !this.homeTime ? L : undefined;
         this.fighter.opts.slot = this.slot;
         if (this.fighter.state === 'patrol' && L && L.alive) this.fighter.state = 'formation';

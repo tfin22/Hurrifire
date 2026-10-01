@@ -22,7 +22,7 @@ import { availableG, flyDirection, flyTo, headingAltitude, maxLevelTurn, rollTo,
 import { ContactMemory, threatGeometry } from './spotting';
 import type { AIContext, Brain } from './types';
 
-export type FighterState = 'patrol' | 'formation' | 'attack' | 'extend' | 'zoom' | 'evade' | 'bunt' | 'rtb' | 'bail' | 'glide' | 'pullUp';
+export type FighterState = 'circle' | 'patrol' | 'formation' | 'attack' | 'extend' | 'zoom' | 'evade' | 'bunt' | 'rtb' | 'bail' | 'glide' | 'pullUp';
 
 export interface FighterOpts {
   /** Patrol waypoint and height. */
@@ -38,6 +38,17 @@ export interface FighterOpts {
   bingo?: number;
   /** Prefer bombers as targets (RAF squadrons). */
   preferBombers?: boolean;
+  /** Bf 110s: a shared defensive circle, formed when fighters threaten. */
+  circle?: DefensiveCircle;
+}
+
+/** The 110s' Lufbery circle: each aircraft covers the tail of the one ahead. */
+export interface DefensiveCircle {
+  centre: Vec3 | null;
+  radius: number;
+  dir: 1 | -1;
+  /** Last time any member saw an enemy fighter near. */
+  lastThreat: number;
 }
 
 export class FighterBrain implements Brain {
@@ -125,6 +136,20 @@ export class FighterBrain implements Brain {
     const hurt = d.glycol > 0.3 || d.oil > 0.5 || d.pilot === 'wounded' || d.wingL + d.wingR > 0.6;
     if ((lowFuel || noAmmo || hurt) && this.state !== 'rtb') {
       if (this.state !== 'evade' && this.state !== 'bunt') { this.set('rtb'); this.targetId = -1; }
+    }
+    // Bf 110s under fighter attack form a defensive circle.
+    const circ = this.opts.circle;
+    if (circ && this.state !== 'rtb') {
+      const near = this.contacts.ids().some((id) => { const t = this.find(ctx, id); return !!t && t.type.role === 'fighter' && t.pos.distTo(me.pos) < 4000; });
+      if (near) {
+        circ.lastThreat = ctx.time;
+        if (!circ.centre) circ.centre = me.pos.clone().add(me.fs.right().scale(circ.radius * circ.dir));
+        if (this.state !== 'circle') this.set('circle');
+      }
+      if (this.state === 'circle') {
+        if (ctx.time - circ.lastThreat > 40) { circ.centre = null; this.set(this.opts.leader ? 'formation' : 'patrol'); }
+        return;
+      }
     }
     // Threats: a known enemy behind us and pointing at us.
     let threat: Plane | null = null, threatRange = Infinity;
@@ -290,6 +315,23 @@ export class FighterBrain implements Brain {
         }
         c.throttle = 1;
         if (this.stateT > TUNING.ai.buntSeconds + TUNING.ai.diveSeconds) this.set('zoom');
+        break;
+      }
+      case 'circle': {
+        // Fly the circle: aim at a point a little ahead round it, hold height.
+        const circ = this.opts.circle!;
+        const c0 = circ.centre ?? fs.pos;
+        const ang = Math.atan2(fs.pos.x - c0.x, fs.pos.z - c0.z) + circ.dir * 0.5;
+        const tgt = new Vec3(c0.x + Math.sin(ang) * circ.radius, c0.y, c0.z + Math.cos(ang) * circ.radius);
+        flyTo(fs, tgt, c, Math.min(gLim, 3.5));
+        c.throttle = 0.9;
+        // Snap shots at anything crossing the nose.
+        for (const id of this.contacts.ids()) {
+          const t = this.find(ctx, id);
+          if (!t) continue;
+          const g = threatGeometry(me, t);
+          if (g.range < sk.fireRange && g.aimErr < 0.06) me.trigger = true;
+        }
         break;
       }
       case 'rtb':

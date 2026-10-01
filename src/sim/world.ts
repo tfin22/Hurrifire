@@ -140,6 +140,7 @@ export class World {
   }
 
   addRaid(r: Raid): Raid {
+    r.sun = this.sun;
     r.drop = (raid, p, jettison) => this.dropBombs(raid, p, jettison);
     this.raids.push(r);
     return r;
@@ -214,12 +215,29 @@ export class World {
     return this.cloudField ? this.cloudField.densityAt(p) : 0;
   }
 
+  /** Live aircraft per side, rebuilt each tick. */
+  private rafLive: Plane[] = [];
+  private lwLive: Plane[] = [];
+  private envCache = new Map<number, FlightEnv>();
+
   envFor(p: Plane): FlightEnv {
+    let e = this.envCache.get(p.id);
+    if (!e) { e = this.makeEnv(p); this.envCache.set(p.id, e); }
+    e.autoRudder = p.isPlayer ? this.autoRudder : true;
+    e.wind = this.weather.wind;
+    return e;
+  }
+
+  private makeEnv(p: Plane): FlightEnv {
+    const g = { h: 0, friction: 0, soft: false };
     return {
       wind: this.weather.wind,
       groundAt: (x, z) => {
         const s = SURFACE_FRICTION[this.ground.surfaceAt(x, z)];
-        return { h: this.ground.heightAt(x, z), friction: s.friction, soft: s.soft };
+        g.h = this.ground.heightAt(x, z);
+        g.friction = s.friction;
+        g.soft = s.soft;
+        return g;
       },
       onTouchdown: (info) => this.onTouchdown(p, info),
       autoRudder: p.isPlayer ? this.autoRudder : true,
@@ -347,6 +365,9 @@ export class World {
     const dt = TUNING.sim.dt;
     this.tick++;
     this.ctx.time = this.time;
+    this.rafLive.length = 0;
+    this.lwLive.length = 0;
+    for (const p of this.planes) if (p.alive) (p.side === 'raf' ? this.rafLive : this.lwLive).push(p);
     for (const p of this.planes) {
       if (!p.airborneObject) continue;
       // Last tick's flight events have been read by now (the screen reads the player's after each tick).
@@ -369,7 +390,11 @@ export class World {
       // A blacked-out pilot's hands go slack.
       if (p.pilot.unconscious) { p.ctl.pitch = 0; p.ctl.roll *= 0.5; p.trigger = false; }
       this.gearPump(p, p.isPlayer ? !!player?.pump : true, dt);
-      p.mods = flightMods(p.damage, p.type);
+      // Handling changes only when the damage does.
+      // Handling changes only when the damage does: on a hit, or as glycol
+      // and engines wear (refreshed every second, staggered by id).
+      const dv = p.damage.hits;
+      if (dv !== p.modsVersion || (this.tick + p.id) % 50 === 0) { p.mods = flightMods(p.damage, p.type); p.modsVersion = dv; }
       p.pilot.penalty = (p.damage.pilot === 'wounded' ? 0.8 : 0) + p.fatigue * 0.4;
       stepFlight(p.fs, p.ctl, this.envFor(p), p.mods, dt, this.rng);
       p.pilot.step(p.fs.nz, dt);
@@ -457,8 +482,9 @@ export class World {
       p.firing = p.armament.fire(p.pos, p.fs.vel, rot, p.id, p.side, dt, this.rng, this.bullets, p.isPlayer && this.cheats.unlimitedAmmo);
     }
     if (p.gunners.length) {
-      const targets = this.planes.filter((t) => t.side !== p.side && t.alive && t.pos.distSqTo(p.pos) < 700 * 700)
-        .map((t) => ({ id: t.id, pos: t.pos, vel: t.fs.vel }));
+      const pool = p.side === 'lw' ? this.rafLive : this.lwLive;
+      const targets: { id: number; pos: Vec3; vel: Vec3 }[] = [];
+      for (const t of pool) if (t.pos.distSqTo(p.pos) < 700 * 700) targets.push({ id: t.id, pos: t.pos, vel: t.fs.vel });
       if (targets.length) {
         const gunnerSkill = p.skill.aim * 0.8;
         const toBody = (v: Vec3) => p.fs.q.unrotate(v);

@@ -8,7 +8,7 @@ import { Vec3 } from '../core/math';
 import { Rng } from '../core/rng';
 import { AircraftId } from '../content/aircraft';
 import { BomberBrain, RaidLink } from './ai/bomber';
-import { FighterBrain } from './ai/fighter';
+import { DefensiveCircle, FighterBrain } from './ai/fighter';
 import { skillFor, SkillLevel } from './ai/types';
 import type { Plane } from './plane';
 import type { World } from './world';
@@ -76,6 +76,10 @@ export class Raid implements RaidLink {
   readonly strengthFactor: number;
   readonly total: number;
   started = false;
+  /** The 110s' shared defensive circle. */
+  readonly circle: DefensiveCircle = { centre: null, radius: 650, dir: 1, lastThreat: -100 };
+  /** Direction towards the sun (top cover sits up-sun). */
+  sun: Vec3 | null = null;
 
   constructor(id: number, readonly spec: RaidSpec, rng: Rng) {
     this.id = id;
@@ -207,9 +211,17 @@ export class Raid implements RaidLink {
         p.skill = skillFor(g.skill);
         p.unit = this.spec.name;
         const slot = escortSlot(g.role, i, g.altOffset, rng);
+        if (g.role === 'topCover' && this.sun) {
+          // Top cover sits up-sun of the bombers, where the RAF can't see it.
+          const sx = this.sun.x * Math.cos(hdg) - this.sun.z * Math.sin(hdg);
+          const sz = this.sun.x * Math.sin(hdg) + this.sun.z * Math.cos(hdg);
+          const l = Math.hypot(sx, sz) || 1;
+          slot.x += (sx / l) * 1200;
+          slot.z += (sz / l) * 1200;
+        }
         p.fs.setAirborne(place(slot), hdg, this.speed + 10);
         if (first && (g.role === 'closeEscort' || g.role === 'topCover' || g.role === 'zerstorer')) {
-          p.brain = new FighterBrain({ leader: first, slot, escortOf: () => this.bombers });
+          p.brain = new FighterBrain({ leader: first, slot, escortOf: () => this.bombers, circle: g.type === 'bf110' ? this.circle : undefined });
         } else {
           // Free hunt / fighter-bombers: fly the route.
           p.brain = new FighterBrain({ waypoint: this.target.clone().add(new Vec3(0, g.altOffset, 0)) });

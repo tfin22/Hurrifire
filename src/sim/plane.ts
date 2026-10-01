@@ -73,6 +73,8 @@ export class Plane {
   /** Smoke emission accumulator. */
   smokeAcc = 0;
   pumpPhase = 0;
+  /** Damage state the current flight mods were computed for. */
+  modsVersion = -1;
   landing: LandingRecord = { bounces: 0, result: null, contacts: [], field: null, at: null };
 
   constructor(

@@ -160,9 +160,9 @@ export class FlightState {
     return massOf(this.type, this.fuel);
   }
 
-  forward(out = new Vec3()): Vec3 { return this.q.rotate(new Vec3(0, 0, 1), out); }
-  up(out = new Vec3()): Vec3 { return this.q.rotate(new Vec3(0, 1, 0), out); }
-  right(out = new Vec3()): Vec3 { return this.q.rotate(new Vec3(1, 0, 0), out); }
+  forward(out = new Vec3()): Vec3 { return this.q.rotate(AXIS_Z, out); }
+  up(out = new Vec3()): Vec3 { return this.q.rotate(AXIS_Y, out); }
+  right(out = new Vec3()): Vec3 { return this.q.rotate(AXIS_X, out); }
 
   /** Place in flight at a position, heading (rad), speed (TAS m/s). */
   setAirborne(pos: Vec3, heading: number, speed: number, pitch = 0): void {
@@ -249,6 +249,13 @@ function updateDerived(s: FlightState, _dt: number): void {
  * Advance one fixed step. Mutates s; pushes events. Deterministic for a
  * given rng state.
  */
+const AXIS_X = new Vec3(1, 0, 0), AXIS_Y = new Vec3(0, 1, 0), AXIS_Z = new Vec3(0, 0, 1);
+/** Scratch vectors for stepFlight (not re-entrant; the sim is single-threaded). */
+const SV = {
+  vAir: new Vec3(), f: new Vec3(), u: new Vec3(), rt: new Vec3(), vb: new Vec3(), force: new Vec3(),
+  vhat: new Vec3(), lift: new Vec3(), spec: new Vec3(), acc: new Vec3(), an: new Vec3(),
+};
+
 export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mods: FlightMods, dt: number, rng: Rng): void {
   const t = s.type;
   const T = TUNING.flight;
@@ -272,11 +279,11 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   s.gearLegsDown = s.gear > 0.98 ? (mods.gearFault === 'one' ? 1 : 2) : 0;
 
   const rho = airDensity(s.pos.y);
-  const vAir = new Vec3(s.vel.x - env.wind.x, s.vel.y - env.wind.y, s.vel.z - env.wind.z);
+  const vAir = SV.vAir.set(s.vel.x - env.wind.x, s.vel.y - env.wind.y, s.vel.z - env.wind.z);
   const V = vAir.len();
   const qbar = 0.5 * rho * V * V;
-  const f = s.forward(new Vec3()), u = s.up(new Vec3()), rt = s.right(new Vec3());
-  const vb = s.q.unrotate(vAir);
+  const f = s.forward(SV.f), u = s.up(SV.u), rt = s.right(SV.rt);
+  const vb = s.q.unrotate(vAir, SV.vb);
   const alpha = V > 1 ? Math.atan2(-vb.y, vb.z) : 0;
   const beta = V > 1 ? Math.atan2(vb.x, vb.z) : 0;
   s.alpha = alpha;
@@ -299,20 +306,20 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   const stallDrag = alpha > t.alphaStall ? (alpha - t.alphaStall) * 0.8 : 0;
   const windmill = s.engine === 'running' || s.engine === 'coughing' ? 0 : 0.008;
   const cd = t.cd0 * (1 + rise) + k * cl * cl + s.flaps * t.flapCd + s.gear * t.gearCd + mods.extraDrag + stallDrag + windmill;
-  const force = new Vec3();
+  const force = SV.force.set(0, 0, 0);
   if (V > 0.5) {
-    const vhat = vAir.clone().scale(1 / V);
-    const liftDir = new Vec3().crossOf(vhat, rt).normalize();
+    const vhat = SV.vhat.copy(vAir).scale(1 / V);
+    const liftDir = SV.lift.crossOf(vhat, rt).normalize();
     force.addScaled(liftDir, qbar * S * cl);
     force.addScaled(vhat, -qbar * S * cd);
     // Side force from sideslip (fuselage + fin).
     force.addScaled(rt, -qbar * S * T.sideForce * Math.sin(beta));
   }
   force.addScaled(f, thrust);
-  const specific = force.clone().scale(1 / m); // non-gravitational acceleration
+  const specific = SV.spec.copy(force).scale(1 / m); // non-gravitational acceleration
   s.nz = specific.dot(u) / G;
   s.nyLat = specific.dot(rt) / G;
-  const acc = specific.clone();
+  const acc = SV.acc.copy(specific);
   acc.y -= G;
 
   if (s.onGround) {
@@ -332,9 +339,9 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   // Path rotation rates: how fast the velocity vector is turning in body axes.
   let pathPitch = 0, pathYaw = 0;
   if (V > 5) {
-    const vhat = vAir.clone().scale(1 / V);
-    const an = acc.clone().addScaled(vhat, -acc.dot(vhat));
-    const np = new Vec3().crossOf(vhat, rt).normalize();
+    const vhat = SV.vhat.copy(vAir).scale(1 / V);
+    const an = SV.an.copy(acc).addScaled(vhat, -acc.dot(vhat));
+    const np = SV.lift.crossOf(vhat, rt).normalize();
     pathPitch = an.dot(np) / V;
     pathYaw = an.dot(rt) / V;
   }

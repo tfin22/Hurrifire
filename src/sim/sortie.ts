@@ -57,6 +57,8 @@ export interface SortieSpec {
   underAttack: boolean;
   fatigue: number;
   assist: boolean;
+  /** Pre-war tight vics, or the looser pairs the squadron learns to fly. */
+  formation?: 'vic' | 'pairs';
   /** Spawn the player at this height and position for 'air' starts. */
   airStart?: { pos: Vec3; heading: number };
 }
@@ -149,7 +151,7 @@ export class Sortie {
     this.names.set(p.id, spec.playerName);
     const n = spec.others.length + 1;
     const leaderIndex = spec.leading ? 0 : 1;
-    const slots = formationSlots(n);
+    const slots = formationSlots(n, spec.formation ?? 'vic');
     const tx = Math.sin(tdir), tz = Math.cos(tdir), rx = Math.cos(tdir), rz = -Math.sin(tdir);
     const startBack = this.base.half - 120;
     const all: Plane[] = [];
@@ -184,6 +186,7 @@ export class Sortie {
       }
       if (!plane.isPlayer) {
         const brain = new WingmanBrain(() => (this.formation[0].alive ? this.formation[0] : this.nextLeader()), new Vec3(s.x, s.y, s.z), baseInfo, i);
+        brain.vic = (spec.formation ?? 'vic') === 'vic';
         if (spec.start === 'air') { brain.phase = 'air'; brain.fighter.opts.leader = leader; brain.fighter.state = 'formation'; }
         plane.brain = brain;
       }
@@ -578,7 +581,20 @@ export function seasonOf(month: number, day: number): number {
 }
 
 /** Vic formations: leader, then vics of three, sections behind. Body-frame offsets (m). */
-export function formationSlots(n: number): Vec3[] {
+export function formationSlots(n: number, style: 'vic' | 'pairs' = 'vic'): Vec3[] {
+  if (style === 'pairs') {
+    // Sections of four in loose line abreast, each a leader and wingman pair:
+    // spread out, everyone free to search the sky.
+    const out: Vec3[] = [];
+    for (let i = 0; i < n; i++) {
+      const section = Math.floor(i / 4), k = i % 4;
+      const sx = (section % 2 ? 1 : -1) * Math.ceil(section / 2) * 300;
+      const pairX = [0, 70, -180, -110][k];
+      const pairZ = [0, -40, -30, -70][k];
+      out.push(new Vec3(sx + pairX, (k > 1 ? 40 : 0) + section * 25, pairZ - section * 60));
+    }
+    return out;
+  }
   const out: Vec3[] = [new Vec3(0, 0, 0)];
   const vic = [new Vec3(-30, -3, -25), new Vec3(30, -3, -25)];
   for (let i = 1; i < n; i++) {

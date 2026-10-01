@@ -3,10 +3,12 @@
 
 import type { App } from './app';
 import { Rng } from './core/rng';
+import { Vec3 } from './core/math';
 import { worldMap, WorldMap } from './content/world/map';
 import { WorldObjects } from './content/world/objects';
 import { phaseFor } from './content/raids';
 import { CALLSIGNS } from './content/text/rt';
+import { PILOT_NAMES } from './content/text/briefing';
 import { generateWeather } from './sim/weather';
 import { generateRaids, SortieResult, SortieSpec } from './sim/sortie';
 import { SkillLevel } from './sim/ai/types';
@@ -50,6 +52,21 @@ export interface QuickCombatConfig {
   wingmen: number;
 }
 
+/** A squadron's other pilots for one-off sorties (the campaign keeps a real roster). */
+export function squadronOthers(rng: Rng, n: number): { name: string; skill: SkillLevel; fatigue: number }[] {
+  const ranks = ['F/Lt', 'F/O', 'F/O', 'P/O', 'P/O', 'P/O', 'Sgt', 'Sgt', 'Sgt', 'F/Sgt', 'P/O'];
+  const pool = [...PILOT_NAMES.british];
+  const out: { name: string; skill: SkillLevel; fatigue: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const foreign = rng.chance(0.18);
+    const list = foreign ? rng.pick([PILOT_NAMES.polish, PILOT_NAMES.czech, PILOT_NAMES.canadian, PILOT_NAMES.newZealand]) : pool;
+    const name = rng.pick(list);
+    if (!foreign) pool.splice(pool.indexOf(name), 1);
+    out.push({ name: `${ranks[i % ranks.length]} ${name}`, skill: rng.pick(['green', 'average', 'average', 'experte'] as SkillLevel[]), fatigue: rng.range(0, 0.3) });
+  }
+  return out;
+}
+
 /** Created once; screens reach shared state through it. */
 export class Game {
   readonly map: WorldMap;
@@ -73,10 +90,7 @@ export class Game {
     const home = this.map.airfieldByName(homeName)!;
     const underAttack = phase === 'airfields' && rng.chance(0.35);
     const weather = generateWeather(rng, month);
-    const others: { name: string; skill: SkillLevel; fatigue: number }[] = [
-      { name: 'F/O Ashworth', skill: 'average', fatigue: 0.2 },
-      { name: 'Sgt Bellamy', skill: 'green', fatigue: 0.1 },
-    ];
+    const others = squadronOthers(rng, 11);
     return {
       seed, month, day, hour: 9 + rng.int(9), weather, phase,
       home: homeName, playerType: rng.chance(0.5) ? 'spitfire' : 'hurricane', playerName: this.pilot.name,
@@ -84,6 +98,47 @@ export class Game {
       leading: true, others, raids: generateRaids(rng, phase, home, this.map, underAttack, phase === 'london' ? 2 : 1),
       start: 'readiness', convergenceM: this.app.settings.convergenceYards * 0.9144, underAttack,
       fatigue: 0, assist: this.app.settings.assist,
+    };
+  }
+
+  /** Quick Combat: start at height near a raid of the player's choosing. */
+  quickCombatSpec(cfg: QuickCombatConfig, seed: number): SortieSpec {
+    const rng = new Rng(seed);
+    const kind = { stukas: 'channel', bombers: 'airfields', big: 'london', fighters: 'airfields', jabo: 'jabo' }[cfg.raid] as 'channel' | 'airfields' | 'london' | 'jabo';
+    const month = kind === 'channel' ? 7 : kind === 'airfields' ? 8 : kind === 'london' ? 9 : 10;
+    const day = kind === 'london' ? 15 : 18;
+    const home = this.map.airfieldByName('Biggin Hill')!;
+    const base = this.randomScramble(seed);
+    const raids = generateRaids(rng, kind, home, this.map, false, kind === 'london' ? 2 : 1);
+    for (const r of raids) {
+      if (cfg.raid === 'fighters') r.groups = r.groups.filter((g) => g.type === 'bf109').map((g) => ({ ...g, role: 'sweep' as const }));
+      else if (!cfg.escort) r.groups = r.groups.filter((g) => g.role === 'bomber' || g.role === 'diveBomber' || g.role === 'jabo');
+      if (cfg.raid === 'big' && r === raids[0]) {
+        // 15 September: thirty-plus bombers and twenty-plus escorts in one go.
+        r.groups = [
+          { type: 'he111', count: 18, role: 'bomber', altOffset: 0, skill: 'average' },
+          { type: 'do17', count: 15, role: 'bomber', altOffset: -200, skill: 'average' },
+          ...(cfg.escort ? [
+            { type: 'bf110' as const, count: 6, role: 'zerstorer' as const, altOffset: 400, skill: 'average' as const },
+            { type: 'bf109' as const, count: 10, role: 'closeEscort' as const, altOffset: 600, skill: 'average' as const },
+            { type: 'bf109' as const, count: 12, role: 'topCover' as const, altOffset: 2000, skill: 'experte' as const },
+          ] : []),
+        ];
+      }
+      if (cfg.raid === 'stukas') r.groups = [{ type: 'ju87', count: 9, role: 'diveBomber', altOffset: 0, skill: 'average' }, ...r.groups.filter((g) => g.type === 'bf109')];
+      r.delay = 0;
+      r.start = r.entry.clone().lerp(r.start, 0.25);
+    }
+    const r = raids[0];
+    const p = r.entry.clone().lerp(r.target, 0.15);
+    const weather = { ...base.weather };
+    if (cfg.weather === 'clear') { weather.cover = 0.03; weather.summary = 'Clear'; }
+    if (cfg.weather === 'cumulus') { weather.cover = 0.3; weather.cloudBase = 1500; weather.cloudTop = 2600; }
+    if (cfg.weather === 'cloudy') { weather.cover = 0.7; weather.cloudBase = 1000; weather.cloudTop = 2400; }
+    return {
+      ...base, month, day, phase: kind, weather, playerType: cfg.playerType, raids, start: 'air', underAttack: false,
+      others: base.others.slice(0, cfg.wingmen), leading: true,
+      airStart: { pos: new Vec3(p.x - 7000, r.alt + 800, p.z - 7000), heading: Math.atan2(r.entry.x - (p.x - 7000), r.entry.z - (p.z - 7000)) },
     };
   }
 

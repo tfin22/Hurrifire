@@ -127,27 +127,24 @@ export class Quat {
   }
   /** Rotate v (body) into out (world). */
   rotate(v: Vec3, out = new Vec3()): Vec3 {
-    const { w, x, y, z } = this;
-    const ix = w * v.x + y * v.z - z * v.y;
-    const iy = w * v.y + z * v.x - x * v.z;
-    const iz = w * v.z + x * v.y - y * v.x;
-    const iw = -x * v.x - y * v.y - z * v.z;
-    out.x = ix * w + iw * -x + iy * -z - iz * -y;
-    out.y = iy * w + iw * -y + iz * -x - ix * -z;
-    out.z = iz * w + iw * -z + ix * -y - iy * -x;
-    return out;
+    return rotateBy(this.w, this.x, this.y, this.z, v, out);
   }
   /** Rotate world vector into body frame. */
   unrotate(v: Vec3, out = new Vec3()): Vec3 {
-    return this.conj().rotate(v, out);
+    return rotateBy(this.w, -this.x, -this.y, -this.z, v, out);
   }
   /** Integrate body angular rates (rad/s about body x, y, z) over dt. */
   integrateBody(wx: number, wy: number, wz: number, dt: number): this {
     const ang = Math.sqrt(wx * wx + wy * wy + wz * wz) * dt;
     if (ang < 1e-12) return this;
-    const dq = Quat.fromAxisAngle(new Vec3(wx, wy, wz), ang);
-    const r = this.mul(dq);
-    this.w = r.w; this.x = r.x; this.y = r.y; this.z = r.z;
+    const h = ang / 2, sn = Math.sin(h);
+    const l = Math.hypot(wx, wy, wz) || 1;
+    const qw = Math.cos(h), qx = (wx / l) * sn, qy = (wy / l) * sn, qz = (wz / l) * sn;
+    const { w, x, y, z } = this;
+    this.w = w * qw - x * qx - y * qy - z * qz;
+    this.x = w * qx + x * qw + y * qz - z * qy;
+    this.y = w * qy - x * qz + y * qw + z * qx;
+    this.z = w * qz + x * qy - y * qx + z * qw;
     return this.normalize();
   }
   /** Fill a row-major 3x3 matrix whose columns are the body axes in world space. */
@@ -203,6 +200,17 @@ export class Quat {
     }
     return q.normalize();
   }
+}
+
+function rotateBy(w: number, x: number, y: number, z: number, v: Vec3, out: Vec3): Vec3 {
+  const ix = w * v.x + y * v.z - z * v.y;
+  const iy = w * v.y + z * v.x - x * v.z;
+  const iz = w * v.z + x * v.y - y * v.x;
+  const iw = -x * v.x - y * v.y - z * v.z;
+  out.x = ix * w + iw * -x + iy * -z - iz * -y;
+  out.y = iy * w + iw * -y + iz * -x - ix * -z;
+  out.z = iz * w + iw * -z + ix * -y - iy * -x;
+  return out;
 }
 
 export const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
