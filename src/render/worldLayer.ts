@@ -44,6 +44,14 @@ export function makeWorldLayer(objs: WorldObjects, world: World, ships: () => Sh
       }
       r.addModel(MODELS[o.kind], o.pos, q, { visRange: range });
     }
+    // Bomb craters on airfields are marked with small flags.
+    for (const a of objs.map.airfields) {
+      if (!a.craters.length || Math.hypot(a.pos.x - cx, a.pos.z - cz) > 4000) continue;
+      for (const c of a.craters) {
+        const fpos = new Vec3(c.x + c.r + 2, objs.map.heightAt(c.x, c.z), c.z);
+        r.addModel(MODELS.flag, fpos, ID, { visRange: 2500 });
+      }
+    }
     // Masts: thin lines that stay visible a long way off.
     for (const m of objs.masts) {
       const d = Math.hypot(m.base.x - cx, m.base.z - cz);

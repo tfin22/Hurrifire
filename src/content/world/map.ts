@@ -235,6 +235,10 @@ export class WorldMap implements TerrainSource, GroundModel {
     };
   }
 
+  cratersNear(x: number, z: number): { x: number; z: number; r: number }[] {
+    return this.airfieldAt(x, z)?.craters ?? [];
+  }
+
   airfieldAt(x: number, z: number): Airfield | null {
     for (const a of this.airfields) if (Math.abs(x - a.pos.x) < a.half && Math.abs(z - a.pos.z) < a.half) return a;
     return null;

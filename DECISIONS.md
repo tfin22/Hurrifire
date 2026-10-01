@@ -141,3 +141,39 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   faces. At 500 m resolution they read as the white line along the coast,
   which is how they look from the air.
 - **Off the map** nothing is drawn, so the copper haze shows through.
+
+## Up and down
+
+- **The touchdown model** (`landing.ts`) scores each factor at contact:
+  sink, bank, drift, speed over the stall, and nose-down attitude. Each
+  is scaled so 1.0 is the edge of acceptable; the worst factor drives the
+  outcome, through thresholds in `TUNING.landing`. The surface table and
+  gear state (down, one leg, up) pick the row. The `luck` input only
+  matters within ±0.12 of a threshold. Fatal outcomes need a genuinely bad
+  impact: sink over 9 m/s, steep nose-down at speed, a large bank at
+  speed, a big fire, or hitting obstacles fast. A test throws 5,000 random
+  clean approaches at every landable surface and gear state, and none is
+  fatal.
+- **Bounces are physical.** A bounce puts the aircraft back in the air with
+  a rebound speed. Each further contact counts for more (+15% per bounce).
+- **The roll-out is simulated, not predicted.** Hedges, trees, buildings,
+  water and craters are checked as the aircraft actually rolls through
+  them, using the same hedged fields the renderer draws. A float in the
+  flare can carry you over a hedge and into the next field, as it should.
+- **Taildragger yaw.** On the ground a yaw rate feeds itself above walking
+  pace (the CG is behind the main wheels), so torque swing grows into a
+  ground loop unless rudder catches it. Auto-rudder catches it, less
+  perfectly at full throttle (about 10° of swing on a full-power run). It
+  can't pivot a stationary aircraft.
+- **Spitfire hand pump.** Select gear up, then hold GEAR to pump (18
+  strokes, about 7 s). The stick hand moves, so the aircraft wobbles in
+  pitch and roll while you pump. Other types' gear is hydraulic.
+- **Manual rudder adds to auto-rudder in the air**, so you can side-slip
+  off height with a fire on, even with auto-rudder on.
+- **Best glide speeds** in `content/aircraft.ts` are computed from the same
+  drag polar the flight model uses, with the prop windmilling (Spitfire
+  about 1:12 at ~120 mph). A test checks a simulated dead-stick glide
+  against `glide.ts` to within 15%.
+- **Oil on the windscreen** stipples out the centre of the windscreen and
+  leaves the side panels clear, so a curved approach looking out of the
+  side works.

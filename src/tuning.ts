@@ -77,11 +77,18 @@ export const TUNING = {
     sideFriction: 0.8,
     groundRudder: 0.6,
     groundTorque: 2.2,
-    groundInstability: 1.4,
+    /** Taildragger yaw divergence gain (per rad/s of yaw rate, scaled by speed/20 m/s). */
+    groundInstability: 1.6,
     /** Auto-rudder effectiveness on the ground run (drops at full throttle). */
-    autoRudderGround: 0.95,
+    autoRudderGround: 0.97,
     groundLoopSlip: 0.42,
+    /** Yaw rate (rad/s) on the ground run that becomes a ground loop. */
+    groundLoopRate: 0.9,
     noseOverPitch: -0.12,
+    /** Spitfire hand pump: seconds per stroke, strokes per second of wobble, and how much it wobbles the stick. */
+    pumpStrokeSecs: 0.4,
+    pumpRate: 1.25,
+    pumpWobble: 0.16,
   },
 
   guns: {
@@ -149,6 +156,45 @@ export const TUNING = {
     diveSeconds: 7,
     /** Seconds after a fatal hit before crew start to jump. */
     bailDelay: [2, 6] as const,
+  },
+
+  landing: {
+    /** Each of these is the edge of "acceptable" for that factor (severity 1.0). */
+    sinkLimit: 3.0,
+    bankLimit: 0.17,
+    driftLimit: 0.2,
+    /** Touching down faster than this × stall speed starts to count as too fast. */
+    fastRatio: 1.25,
+    fastSpan: 0.3,
+    noseDownLimit: 0.06,
+    /** Severity thresholds. */
+    greaserEdge: 0.6,
+    bounceEdge: 0.85,
+    damageEdge: 1.5,
+    crashEdge: 2.4,
+    bellyOk: 1.6,
+    groundLoopEdge: 1.0,
+    /** Width of the band either side of a threshold where luck decides. */
+    borderline: 0.12,
+    /** Three-point attitude counts if pitch ≥ this fraction of the type's ground attitude. */
+    threePointFrac: 0.6,
+    bounceRestitution: 0.35,
+    maxBounceVy: 4,
+    /** Only genuinely bad impacts kill: */
+    fatalSink: 9,
+    fatalNose: 4,
+    fatalBank: 0.75,
+    fatalFire: 0.6,
+    ditchSink: 2.5,
+    marshNoseOverSpeed: 15,
+    ploughNoseOverSpeed: 24,
+    obstacleHarmless: 4,
+    obstacleWoundSpeed: 20,
+    obstacleFatalSpeed: 30,
+    /** Rolling friction by surface with wheels, braking, and sliding on the belly. */
+    rollMu: { airfield: 0.06, pasture: 0.08, stubble: 0.09, chalk: 0.08, ploughed: 0.2, marsh: 0.3, beach: 0.15 } as Record<string, number>,
+    brakeMu: 0.18,
+    bellyMu: 0.5,
   },
 
   assist: {

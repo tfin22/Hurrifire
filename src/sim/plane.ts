@@ -10,6 +10,19 @@ import { DamageState, newDamage } from './damage';
 import type { Brain, Skill } from './ai/types';
 import { skillFor } from './ai/types';
 import { Vec3 } from '../core/math';
+import type { TouchdownResult } from './landing';
+import type { FieldRect } from './ground';
+
+export interface LandingRecord {
+  bounces: number;
+  /** Worst result so far on this landing. */
+  result: TouchdownResult | null;
+  /** Every contact, for the debug readout. */
+  contacts: { sink: number; speed: number; bank: number; pitch: number; drift: number; surface: string; kind: string }[];
+  field: FieldRect | null;
+  /** Where it ended up (for the logbook). */
+  at: Vec3 | null;
+}
 
 export type PlaneStatus =
   | 'flying'    // under control (in the air or on the ground)
@@ -59,6 +72,8 @@ export class Plane {
   bombs: number;
   /** Smoke emission accumulator. */
   smokeAcc = 0;
+  pumpPhase = 0;
+  landing: LandingRecord = { bounces: 0, result: null, contacts: [], field: null, at: null };
 
   constructor(
     readonly id: number,

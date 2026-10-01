@@ -354,7 +354,8 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   // Yaw: sideslip target from rudder or auto-rudder; torque at high power, low speed.
   const torqueBeta = t.torque * powerFrac * clamp(1 - V / 110, 0, 1);
   let betaTarget: number;
-  if (env.autoRudder) betaTarget = torqueBeta * T.autoRudderAirResidual + mods.rudderBias * 0.5;
+  // Manual rudder still works with auto-rudder on (side-slipping off height).
+  if (env.autoRudder) betaTarget = torqueBeta * T.autoRudderAirResidual + mods.rudderBias * 0.5 - c.yaw * T.rudderBeta * mods.rudder;
   else betaTarget = -c.yaw * T.rudderBeta * mods.rudder + torqueBeta + mods.rudderBias + T.adverseYaw * s.p;
   let r = pathYaw + T.weathercock * authority * (beta - betaTarget);
 
@@ -536,30 +537,34 @@ function groundStep(s: FlightState, c: FlightControls, env: FlightEnv, mods: Fli
   if (Math.abs(vSide) <= sideFric * dt) vSide = 0;
   else vSide -= Math.sign(vSide) * sideFric * dt;
 
-  // Yaw: rudder (with slipstream), torque swing and the taildragger's instability.
+  // Yaw: rudder (with slipstream), torque swing and the taildragger's
+  // instability — with the CG behind the main wheels, a yaw rate feeds
+  // itself once rolling, and must be caught with rudder.
   const slip = Math.atan2(vSide, Math.max(1, Math.abs(vAlong)));
   const slipstream = (thrust / m) * 3;
   const rudderAuth = clamp((V + slipstream) / 35, 0.1, 1) * T.groundRudder * mods.rudder;
   const powerFrac = clamp(s.throttle, 0, 1) * (s.engine === 'running' ? 1 : 0);
-  const torque = -t.torque * T.groundTorque * powerFrac * clamp(1 - V / (vs * 1.2), 0, 1);
-  const instability = sliding ? 0 : -T.groundInstability * slip * clamp(vAlong / 15, 0, 1.5);
+  const rolling = clamp(Math.abs(vAlong) / 5, 0, 1); // can't pivot when stationary
+  const torque = -t.torque * T.groundTorque * powerFrac * clamp(1 - V / (vs * 1.2), 0, 1) * rolling;
+  const instability = sliding ? 0 : T.groundInstability * s.r * clamp(Math.abs(vAlong) / 20, 0, 1.5) + mods.rudderBias * 0.2 * rolling;
   let rudder: number;
   if (env.autoRudder && !sliding) {
     // Auto-rudder: holds the nose straight, less perfectly at full throttle.
-    const eff = T.autoRudderGround * (1 - 0.25 * powerFrac);
-    const want = -(torque + instability) / Math.max(rudderAuth, 0.05) * eff - s.r * 0.8 / Math.max(rudderAuth, 0.05);
+    const eff = T.autoRudderGround * (1 - 0.1 * powerFrac);
+    const want = (-(torque + instability) * eff - s.r * 0.8) / Math.max(rudderAuth, 0.05);
     rudder = clamp(want + c.yaw, -1, 1);
   } else rudder = clamp(c.yaw, -1, 1);
-  let yawRate = rudder * rudderAuth + torque + instability + mods.rudderBias * 0.2;
-  if (s.groundLooping > 0) {
+  let yawRate = (rudder * rudderAuth) * rolling + torque + instability;
+  if (s.groundLooping !== 0) {
     yawRate = s.groundLooping * 2.2;
     vAlong *= 1 - dt * 1.5;
   }
   if (s.sliding) yawRate *= 0.3;
   s.r += (yawRate - s.r) * Math.min(1, dt * 4);
+  s.r = clamp(s.r, -2.5, 2.5);
   s.groundHeading += s.r * dt;
-  if (!sliding && Math.abs(slip) > T.groundLoopSlip && V > 7 && s.groundLooping === 0) {
-    s.groundLooping = slip > 0 ? -1 : 1;
+  if (!sliding && s.groundLooping === 0 && V > 7 && (Math.abs(slip) > T.groundLoopSlip || Math.abs(s.r) > T.groundLoopRate)) {
+    s.groundLooping = s.r < 0 ? -1 : 1;
     s.events.push('groundLoop');
   }
 

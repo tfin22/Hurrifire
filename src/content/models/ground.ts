@@ -210,7 +210,15 @@ function ship(len: number, name: string): Model {
   return b.build(name);
 }
 
+function flag(): Model {
+  const b = new ModelBuilder();
+  b.box('white', [-0.08, 0, -0.08], [0.08, 2.2, 0.08]);
+  b.plate('red', 'red', [[0, 2.2, 0], [0, 1.6, 0], [0, 1.9, 0.9]], [1, 0, 0]);
+  return b.build('Crater flag');
+}
+
 export const MODELS = {
+  flag: flag(),
   oast: oast(),
   hangar: hangar(),
   wreckedHangar: wreckedHangar(),

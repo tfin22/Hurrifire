@@ -13,6 +13,7 @@ import { Bullet, hitZone, stepBullet } from './ballistics';
 import { applyHit, controllable, DamageEvent, flightMods, tickDamage } from './damage';
 import { FlightEnv, GroundResponse, stepFlight, TouchdownInfo } from './flight';
 import { GroundModel, SURFACE_FRICTION } from './ground';
+import { evaluateTouchdown, obstacleImpact, worseOf } from './landing';
 import { stepGunner } from './guns';
 import { CloudField } from './clouds';
 import type { Balloon } from '../content/world/objects';
@@ -65,7 +66,8 @@ export interface GroundFire {
 export type WorldEventKind =
   | 'hit' | 'playerHit' | 'shotDown' | 'bail' | 'chuteLanded' | 'crash' | 'explode' | 'wingOff'
   | 'fire' | 'glycol' | 'oil' | 'pilotWounded' | 'pilotKilled' | 'crewHit' | 'gearDamaged' | 'flapsDamaged'
-  | 'landed' | 'ditched' | 'bombsGone' | 'jettison';
+  | 'landed' | 'ditched' | 'bombsGone' | 'jettison' | 'bounce' | 'touchdown' | 'groundLoop' | 'noseOver'
+  | 'obstacle' | 'liftoff' | 'chuteOpen';
 
 export interface WorldEvent {
   kind: WorldEventKind;
@@ -162,12 +164,108 @@ export class World {
       return { action: 'stop' };
     }
     if (this.touchdown) return this.touchdown(p, info);
-    // Without a landing model: anything hard or fast is a crash.
-    if (info.sinkRate > 6 || info.airspeed > info.stallSpeed * 1.8 || Math.abs(info.bankRad) > 0.5) {
-      this.crash(p);
-      return { action: 'stop' };
+    const surface = this.ground.surfaceAt(info.pos.x, info.pos.z);
+    const r = evaluateTouchdown({
+      sinkRate: info.sinkRate, airspeed: info.airspeed, stallSpeed: info.stallSpeed, groundSpeed: info.groundSpeed,
+      bank: info.bankRad, pitch: info.pitchRad, drift: info.drift, gear: info.gear, surface,
+      threePoint: p.type.groundAttitude, fire: p.damage.fire, nosesUnder: p.type.id === 'spitfire',
+      bounces: p.landing.bounces, luck: this.rng.next(),
+    });
+    const L = p.landing;
+    L.contacts.push({ sink: info.sinkRate, speed: info.airspeed, bank: info.bankRad, pitch: info.pitchRad, drift: info.drift, surface, kind: r.kind });
+    if (r.kind === 'bounce') {
+      L.bounces++;
+      this.emit({ kind: 'bounce', planeId: p.id, pos: info.pos.clone() }, false);
+      return { action: 'bounce', bounceVy: r.bounceVy };
     }
-    return { action: info.gear === 'down' ? 'roll' : 'stop' };
+    L.result = worseOf(L.result, r);
+    L.field = this.ground.fieldAt?.(info.pos.x, info.pos.z) ?? null;
+    this.emit({ kind: 'touchdown', planeId: p.id, pos: info.pos.clone() }, false);
+    switch (r.kind) {
+      case 'crashFatal':
+        this.crash(p);
+        return { action: 'stop' };
+      case 'ditched':
+        this.ditch(p);
+        return { action: 'stop' };
+      case 'groundLoop':
+        p.fs.groundLooping = (info.bankRad || info.drift) > 0 ? 1 : -1;
+        return { action: 'roll' };
+      case 'greaser':
+      case 'roll':
+        return { action: 'roll' };
+      default:
+        // Nose-over, belly, crash-landing: it slides to a stop.
+        if (r.kind === 'noseOver') p.fs.groundPitch = -0.6;
+        for (let i = 0; i < 4; i++) this.puff(info.pos, 'dust', 4 + this.rng.next() * 4, 2);
+        return { action: 'stop' };
+    }
+  }
+
+  private ditch(p: Plane): void {
+    p.status = 'ditched';
+    p.fs.stopped = true;
+    p.fs.vel.set(0, 0, 0);
+    for (let i = 0; i < 8; i++) this.puff(p.pos, 'splash', 4 + this.rng.next() * 6, 2.5);
+    this.emit({ kind: 'ditched', planeId: p.id, pos: p.pos.clone() });
+  }
+
+  /** On the ground: hedges, trees, water and craters in the roll-out; physics events. */
+  private groundRoll(p: Plane): void {
+    const fs = p.fs;
+    for (const e of fs.events) {
+      if (e === 'groundLoop') {
+        p.landing.result = worseOf(p.landing.result, { kind: 'groundLoop', aircraft: 'minor', pilot: 'fine', reason: 'ground-looped', severity: 1.2 });
+        this.emit({ kind: 'groundLoop', planeId: p.id, pos: p.pos.clone() });
+      }
+      if (e === 'noseOver') {
+        p.landing.result = worseOf(p.landing.result, { kind: 'noseOver', aircraft: 'damaged', pilot: 'shaken', reason: 'tipped onto its nose', severity: 1.3 });
+        this.emit({ kind: 'noseOver', planeId: p.id, pos: p.pos.clone() });
+      }
+      if (e === 'liftoff') {
+        p.landing = { bounces: 0, result: null, contacts: [], field: null, at: null };
+        this.emit({ kind: 'liftoff', planeId: p.id }, false);
+      }
+    }
+    const speed = Math.hypot(fs.vel.x, fs.vel.z);
+    if (!fs.onGround || fs.stopped || (speed < 0.6 && fs.throttle < 0.15 && p.landing.result)) {
+      if ((fs.stopped || speed < 0.6) && p.status === 'flying' && fs.onGround) this.stopOnGround(p);
+      return;
+    }
+    const g = this.ground;
+    const f = p.landing.field ?? g.fieldAt?.(p.pos.x, p.pos.z) ?? null;
+    let hit: 'hedge' | 'trees' | 'buildings' | 'water' | 'crater' | null = null;
+    if (f && (p.pos.x < f.x0 || p.pos.x >= f.x1 || p.pos.z < f.z0 || p.pos.z >= f.z1)) {
+      const side = p.pos.x < f.x0 ? 0 : p.pos.x >= f.x1 ? 1 : p.pos.z < f.z0 ? 2 : 3;
+      if (f.hedge[side]) hit = 'hedge';
+      p.landing.field = g.fieldAt?.(p.pos.x, p.pos.z) ?? null;
+    }
+    const surf = g.surfaceAt(p.pos.x, p.pos.z);
+    if (!hit && (surf === 'woodland' || surf === 'orchard' || surf === 'hops')) hit = 'trees';
+    if (!hit && surf === 'town') hit = 'buildings';
+    if (!hit && (surf === 'water' || surf === 'sea')) hit = 'water';
+    if (!hit) for (const c of g.cratersNear?.(p.pos.x, p.pos.z) ?? []) if (Math.hypot(p.pos.x - c.x, p.pos.z - c.z) < c.r) hit = 'crater';
+    if (hit) {
+      const r = obstacleImpact(speed, hit, fs.gear > 0.98 && !fs.sliding);
+      if (r) {
+        p.landing.result = worseOf(p.landing.result, r);
+        this.emit({ kind: 'obstacle', planeId: p.id, pos: p.pos.clone() });
+        if (r.kind === 'crashFatal') { this.crash(p); return; }
+        if (hit === 'water') { this.ditch(p); return; }
+        fs.vel.scale(hit === 'hedge' ? 0.25 : 0.1);
+        fs.sliding = true;
+        if (r.kind === 'noseOver') fs.groundPitch = -0.6;
+        for (let i = 0; i < 3; i++) this.puff(p.pos, 'dust', 5, 2);
+      }
+    }
+  }
+
+  /** Down and stopped: the landing is over. */
+  private stopOnGround(p: Plane): void {
+    if (!p.landing.result) return; // parked before take-off
+    p.status = 'landed';
+    p.landing.at = p.pos.clone();
+    this.emit({ kind: 'landed', planeId: p.id, pos: p.pos.clone() });
   }
 
   emit(e: Omit<WorldEvent, 't'>, keep = true): void {
@@ -199,6 +297,7 @@ export class World {
       }
       // A blacked-out pilot's hands go slack.
       if (p.pilot.unconscious) { p.ctl.pitch = 0; p.ctl.roll *= 0.5; p.trigger = false; }
+      this.gearPump(p, p.isPlayer ? !!player?.pump : true, dt);
       p.mods = flightMods(p.damage, p.type);
       p.pilot.penalty = (p.damage.pilot === 'wounded' ? 0.8 : 0) + p.fatigue * 0.4;
       stepFlight(p.fs, p.ctl, this.envFor(p), p.mods, dt, this.rng);
@@ -208,6 +307,7 @@ export class World {
       if (this.balloons.length && p.status === 'flying' && p.pos.y < 2500) this.balloonStep(p);
       this.gunsStep(p, dt);
       this.bailStep(p, dt);
+      this.groundRoll(p);
       if (p.fs.events.length && !p.isPlayer) p.fs.events.length = 0;
     }
     this.bulletsStep(dt);
@@ -235,6 +335,20 @@ export class World {
       else if (d.glycol > 0.05 && p.fs.engine !== 'off') this.puff(at, 'white', 1.2 + d.glycol * 2, 3);
       else if (d.oil > 0.1) this.puff(at, 'black', 1 + d.oil, 2.5);
     }
+  }
+
+  /**
+   * The Spitfire Mk I's undercarriage is raised with a hand pump. While the
+   * pilot pumps, their stick hand moves and the aircraft wobbles gently.
+   */
+  private gearPump(p: Plane, pumping: boolean, dt: number): void {
+    const fs = p.fs;
+    if (p.type.gear !== 'pump' || fs.gearCmd > 0.5 || fs.gear <= 0 || fs.onGround || !pumping || p.status !== 'flying') return;
+    fs.gear = Math.max(0, fs.gear - dt / (p.type.pumpStrokes * TUNING.flight.pumpStrokeSecs));
+    p.pumpPhase += dt;
+    const w = Math.sin(p.pumpPhase * Math.PI * 2 * TUNING.flight.pumpRate);
+    p.ctl.pitch += w * TUNING.flight.pumpWobble;
+    p.ctl.roll += Math.sin(p.pumpPhase * Math.PI * 2 * TUNING.flight.pumpRate + 1) * TUNING.flight.pumpWobble * 0.4;
   }
 
   /** Flying into a balloon or its cable does real harm. */

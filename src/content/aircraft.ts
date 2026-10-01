@@ -104,7 +104,7 @@ export interface AircraftType {
   pitchGain: number;
   /** Structural speed limit (TAS m/s) — above this things start to break. */
   vne: number;
-  /** Best glide speed (IAS m/s) and gliding ratio, used by Assist and the glide-range tests. */
+  /** Best glide speed (IAS m/s, prop windmilling) — matches sim/glide.ts; used by Assist and the AI. */
   bestGlide: number;
   /** Fuel burn at full power (kg/s, all engines). */
   fuelBurn: number;
@@ -181,7 +181,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     power: 768_000, engines: 1, propEff: 0.75, critAlt: 5200, lapse: 7000, thrustV0: 62,
     dragRiseV: 185, dragRiseK: 3.0, fuelInjected: false,
     rollRate: 1.7, rollPeakV: 85, rollHeavyV: 150, maxG: 7.5, minG: -3, pitchGain: 6.5, vne: 210,
-    bestGlide: 72, fuelBurn: 0.085, boostMul: 1.25, boostSeconds: 300, torque: 0.09,
+    bestGlide: 54, fuelBurn: 0.085, boostMul: 1.25, boostSeconds: 300, torque: 0.09,
     groundAttitude: 0.2, gearHeight: 1.85, gear: 'pump', pumpStrokes: 18, robust: 1.0,
     guns: [-3.5, -3.1, -2.6, -2.15, 2.15, 2.6, 3.1, 3.5].map((x) => ({ gun: 'browning303' as GunId, pos: [x, -0.42 + Math.abs(x) * 0.1, 0.9] as [number, number, number], rounds: 300 })),
     gunners: [], zones: fighterZones(9.1, 11.2, 4.0), engineNote: 1.0, spanFt: 0, bombLoad: 0,
@@ -193,7 +193,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     power: 768_000, engines: 1, propEff: 0.73, critAlt: 4600, lapse: 6000, thrustV0: 58,
     dragRiseV: 170, dragRiseK: 3.5, fuelInjected: false,
     rollRate: 1.55, rollPeakV: 80, rollHeavyV: 160, maxG: 7.5, minG: -3, pitchGain: 6.0, vne: 195,
-    bestGlide: 70, fuelBurn: 0.087, boostMul: 1.25, boostSeconds: 300, torque: 0.08,
+    bestGlide: 53, fuelBurn: 0.087, boostMul: 1.25, boostSeconds: 300, torque: 0.08,
     groundAttitude: 0.2, gearHeight: 1.95, gear: 'hydraulic', pumpStrokes: 0, robust: 1.5,
     guns: [-2.75, -2.55, -2.35, -2.15, 2.15, 2.35, 2.55, 2.75].map((x) => ({ gun: 'browning303' as GunId, pos: [x, -0.45, 0.8] as [number, number, number], rounds: 334 })),
     gunners: [], zones: fighterZones(9.8, 12.2, 4.2), engineNote: 0.97, spanFt: 0, bombLoad: 0,
@@ -205,7 +205,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     power: 820_000, engines: 1, propEff: 0.74, critAlt: 4300, lapse: 5600, thrustV0: 58,
     dragRiseV: 205, dragRiseK: 2.0, fuelInjected: true,
     rollRate: 1.6, rollPeakV: 90, rollHeavyV: 150, maxG: 7.5, minG: -3.5, pitchGain: 6.0, vne: 225,
-    bestGlide: 75, fuelBurn: 0.09, boostMul: 1.15, boostSeconds: 300, torque: 0.1,
+    bestGlide: 59, fuelBurn: 0.09, boostMul: 1.15, boostSeconds: 300, torque: 0.1,
     groundAttitude: 0.22, gearHeight: 1.8, gear: 'hydraulic', pumpStrokes: 0, robust: 1.0,
     guns: [
       { gun: 'mg17', pos: [-0.25, 0.35, 2.2], rounds: 1000 },
@@ -222,7 +222,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     power: 820_000, engines: 2, propEff: 0.74, critAlt: 4500, lapse: 6500, thrustV0: 60,
     dragRiseV: 190, dragRiseK: 2.5, fuelInjected: true,
     rollRate: 0.95, rollPeakV: 100, rollHeavyV: 160, maxG: 6.0, minG: -2.5, pitchGain: 4.0, vne: 205,
-    bestGlide: 80, fuelBurn: 0.17, boostMul: 1.1, boostSeconds: 300, torque: 0.02,
+    bestGlide: 59, fuelBurn: 0.17, boostMul: 1.1, boostSeconds: 300, torque: 0.02,
     groundAttitude: 0.18, gearHeight: 2.1, gear: 'hydraulic', pumpStrokes: 0, robust: 1.3,
     guns: [
       { gun: 'mg17', pos: [-0.2, 0.2, 5.0], rounds: 1000 }, { gun: 'mg17', pos: [0.2, 0.2, 5.0], rounds: 1000 },
@@ -239,7 +239,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     power: 750_000, engines: 2, propEff: 0.72, critAlt: 4000, lapse: 6000, thrustV0: 60,
     dragRiseV: 170, dragRiseK: 2.5, fuelInjected: false,
     rollRate: 0.8, rollPeakV: 90, rollHeavyV: 140, maxG: 4.0, minG: -1.5, pitchGain: 3.0, vne: 180,
-    bestGlide: 75, fuelBurn: 0.14, boostMul: 1.05, boostSeconds: 120, torque: 0.01,
+    bestGlide: 56, fuelBurn: 0.14, boostMul: 1.05, boostSeconds: 120, torque: 0.01,
     groundAttitude: 0.18, gearHeight: 2.3, gear: 'hydraulic', pumpStrokes: 0, robust: 1.4,
     guns: [],
     gunners: [
@@ -257,7 +257,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     power: 1_000_000, engines: 2, propEff: 0.72, critAlt: 4000, lapse: 6000, thrustV0: 60,
     dragRiseV: 165, dragRiseK: 2.5, fuelInjected: true,
     rollRate: 0.55, rollPeakV: 90, rollHeavyV: 130, maxG: 3.5, minG: -1.2, pitchGain: 2.5, vne: 170,
-    bestGlide: 75, fuelBurn: 0.18, boostMul: 1.05, boostSeconds: 120, torque: 0.01,
+    bestGlide: 55, fuelBurn: 0.18, boostMul: 1.05, boostSeconds: 120, torque: 0.01,
     groundAttitude: 0.16, gearHeight: 2.6, gear: 'hydraulic', pumpStrokes: 0, robust: 1.9,
     guns: [],
     gunners: [
@@ -276,7 +276,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     power: 880_000, engines: 2, propEff: 0.74, critAlt: 4500, lapse: 6200, thrustV0: 60,
     dragRiseV: 185, dragRiseK: 2.5, fuelInjected: true,
     rollRate: 0.85, rollPeakV: 95, rollHeavyV: 150, maxG: 4.5, minG: -1.8, pitchGain: 3.2, vne: 200,
-    bestGlide: 80, fuelBurn: 0.18, boostMul: 1.05, boostSeconds: 120, torque: 0.01,
+    bestGlide: 65, fuelBurn: 0.18, boostMul: 1.05, boostSeconds: 120, torque: 0.01,
     groundAttitude: 0.17, gearHeight: 2.4, gear: 'hydraulic', pumpStrokes: 0, robust: 1.5,
     guns: [{ gun: 'mg15', pos: [0.3, 0.6, 5.2], rounds: 600 }],
     gunners: [
@@ -292,7 +292,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     power: 820_000, engines: 1, propEff: 0.7, critAlt: 3500, lapse: 5500, thrustV0: 55,
     dragRiseV: 165, dragRiseK: 2.5, fuelInjected: true,
     rollRate: 1.1, rollPeakV: 75, rollHeavyV: 130, maxG: 6.0, minG: -2, pitchGain: 4.0, vne: 170,
-    bestGlide: 65, fuelBurn: 0.09, boostMul: 1.05, boostSeconds: 60, torque: 0.06,
+    bestGlide: 51, fuelBurn: 0.09, boostMul: 1.05, boostSeconds: 60, torque: 0.06,
     groundAttitude: 0.2, gearHeight: 2.2, gear: 'fixed', pumpStrokes: 0, robust: 1.1,
     guns: [{ gun: 'mg17', pos: [-2.3, -0.5, 0.8], rounds: 500 }, { gun: 'mg17', pos: [2.3, -0.5, 0.8], rounds: 500 }],
     gunners: [mg15('rear gunner', [0, 0.7, -1.6], [0, 0.3, -1], 55, 6)],

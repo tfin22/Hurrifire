@@ -20,8 +20,12 @@ import { leadPoint } from '../sim/ballistics';
 import { damageFraction, fireTimeLeft } from '../sim/damage';
 import { haptics } from '../input/devices';
 import { line, rectOutline, pset } from '../render/raster';
+import { approachState, drawApproachIndicator, drawFieldHighlights, FieldCandidate, findFields } from './landingAids';
+import { stallSpeed } from '../content/aircraft';
 import { World } from '../sim/world';
 import { TUNING } from '../tuning';
+
+const DEBUG_DAMAGE = ['GLYCOL', 'OIL', 'FIRE', 'AILERON', 'ELEVATOR', 'RUDDER', 'GEAR ONE', 'GEAR NONE', 'FLAPS', 'WOUND', 'SEIZE'];
 
 export type ViewMode = 'cockpit' | 'padlock' | 'chase' | 'flyby';
 
@@ -108,10 +112,15 @@ export class FlightScreen implements Screen {
     return this.world.parachutes.find((c) => c.fromPlane === this.player.id && c.name === 'pilot');
   }
 
+  protected debugSel = 0;
+
   protected debugTaps(): void {
     const s = this.app.input;
+    const n = this.debugItems().length;
+    while (s.consume('debugNext')) this.debugSel = (this.debugSel + 1) % n;
+    while (s.consume('debugAct')) this.debugItems()[this.debugSel]?.act();
     for (const t of s.taps) {
-      if (t.x < 250 || t.y > 120) continue;
+      if (t.x < 250 || t.y > 175) continue;
       const i = Math.floor((t.y - 64) / 9);
       const items = this.debugItems();
       if (i >= 0 && i < items.length) items[i].act();
@@ -126,7 +135,62 @@ export class FlightScreen implements Screen {
       { label: 'STOP ENGINE', act: () => { this.player.fs.engine = 'dead'; } },
       { label: 'GLYCOL HIT', act: () => { this.player.damage.glycol = 0.6; } },
       { label: 'FIRE!', act: () => { this.player.damage.fire = 0.05; } },
+      { label: `AF ${this.debugAirfields()[this.debugAf]?.name.slice(0, 10).toUpperCase() ?? '-'}`, act: () => { this.debugAf = (this.debugAf + 1) % Math.max(1, this.debugAirfields().length); } },
+      { label: 'SPAWN FINAL', act: () => this.spawnFinal() },
+      { label: 'SPAWN 600M FIELD', act: () => this.spawnOverField() },
+      { label: `DMG ${DEBUG_DAMAGE[this.debugDmg]}`, act: () => { this.debugDmg = (this.debugDmg + 1) % DEBUG_DAMAGE.length; } },
+      { label: 'APPLY DMG', act: () => this.applyDebugDamage(DEBUG_DAMAGE[this.debugDmg]) },
+      { label: `TOUCH INFO ${this.showTouch ? 'ON' : 'OFF'}`, act: () => { this.showTouch = !this.showTouch; } },
     ];
+  }
+
+  protected debugAirfields(): { name: string; pos: Vec3; dir: number; half: number }[] {
+    const g = this.world.ground as unknown as { airfields?: { name: string; pos: Vec3; dir: number; half: number; kind: string }[] };
+    return (g.airfields ?? []).filter((a) => a.kind !== 'luftwaffe');
+  }
+
+  /** Debug: put the player on a 2.5 km final to an airfield, gear and flaps down. */
+  protected spawnFinal(): void {
+    const af = this.debugAirfields()[this.debugAf];
+    if (!af) return;
+    const fs = this.player.fs;
+    const d = (af.dir * Math.PI) / 180;
+    const tx = af.pos.x - Math.sin(d) * (af.half - 80), tz = af.pos.z - Math.cos(d) * (af.half - 80);
+    const vs = stallSpeed(fs.type, fs.mass, 1.225, 1);
+    fs.setAirborne(new Vec3(tx - Math.sin(d) * 2500, af.pos.y + fs.type.gearHeight + 2500 * 0.075, tz - Math.cos(d) * 2500), d, vs * 1.35);
+    fs.gear = fs.gearCmd = 1;
+    fs.flaps = fs.flapsCmd = 1;
+    this.player.status = 'flying';
+    this.player.landing = { bounces: 0, result: null, contacts: [], field: null, at: null };
+    this.app.input.throttle = 0.35;
+  }
+
+  /** Debug: 600 m over a field with the engine stopped. */
+  protected spawnOverField(): void {
+    const fs = this.player.fs;
+    fs.setAirborne(new Vec3(fs.pos.x, this.world.ground.heightAt(fs.pos.x, fs.pos.z) + 600, fs.pos.z), fs.heading, fs.type.bestGlide);
+    fs.engine = 'dead';
+    this.player.status = 'flying';
+    this.player.landing = { bounces: 0, result: null, contacts: [], field: null, at: null };
+    this.app.input.throttle = 0;
+  }
+
+  protected applyDebugDamage(kind: string): void {
+    const d = this.player.damage;
+    switch (kind) {
+      case 'GLYCOL': d.glycol = 0.7; break;
+      case 'OIL': d.oil = 0.6; break;
+      case 'FIRE': d.fire = 0.05; break;
+      case 'AILERON': d.aileron = 0.6; d.aileronBias = 0.15; break;
+      case 'ELEVATOR': d.elevator = 0.5; d.elevatorBias = 0.25; break;
+      case 'RUDDER': d.rudder = 0.6; d.rudderBias = 0.06; break;
+      case 'GEAR ONE': d.gear = 'one'; break;
+      case 'GEAR NONE': d.gear = 'none'; break;
+      case 'FLAPS': d.flaps = false; break;
+      case 'WOUND': d.pilot = 'wounded'; break;
+      case 'SEIZE': this.player.fs.engine = 'seized'; break;
+    }
+    this.flashMessage(`DEBUG: ${kind}`, 1.5);
   }
 
   /** Per-frame world events: messages, haptics, kill calls. */
@@ -168,16 +232,52 @@ export class FlightScreen implements Screen {
       case 'bail':
         if (e.planeId !== me.id && w.planeById(e.planeId)?.side !== me.side) this.flashMessage('HE\'S BALED OUT', 2);
         break;
+      case 'bounce':
+        if (e.planeId === me.id) { this.flashMessage('BOUNCED!', 1.5); haptics.pulse(60); }
+        break;
+      case 'touchdown':
+        if (e.planeId === me.id) { haptics.pulse(30); this.lastTouch = me.landing.contacts[me.landing.contacts.length - 1] ?? null; }
+        break;
+      case 'groundLoop':
+        if (e.planeId === me.id) this.flashMessage('GROUND LOOP!', 2.5);
+        break;
+      case 'noseOver':
+        if (e.planeId === me.id) this.flashMessage('ON HER NOSE!', 2.5);
+        break;
+      case 'obstacle':
+        if (e.planeId === me.id) { this.flashMessage(me.landing.result?.reason.toUpperCase() ?? 'CRUNCH', 3); haptics.pulse([80, 40, 120]); }
+        break;
+      case 'landed':
+        if (e.planeId === me.id) this.flashMessage(`DOWN: ${me.landing.result?.reason.toUpperCase() ?? ''}`, 6);
+        break;
+      case 'ditched':
+        if (e.planeId === me.id) this.flashMessage('DITCHED - GET OUT!', 6);
+        break;
+      case 'crash':
+        if (e.planeId === me.id) this.flashMessage('CRASHED', 6);
+        break;
+      case 'liftoff':
+        if (e.planeId === me.id) this.lastTouch = null;
+        break;
     }
   }
 
+  protected lastTouch: Plane['landing']['contacts'][number] | null = null;
+  protected showTouch = false;
+  protected fields: FieldCandidate[] = [];
+  protected fieldsAt = -10;
+  protected debugAf = 0;
+  protected debugDmg = 0;
   protected hitFlash = 0;
   protected woundFlash = 0;
 
   protected gearAction(): void {
     const fs = this.player.fs;
     if (fs.type.gear === 'fixed' || fs.onGround) return;
+    // Spitfire: once the selector is up, further presses just keep pumping.
+    if (fs.type.gear === 'pump' && fs.gearCmd < 0.5 && fs.gear > 0.02) return;
     fs.gearCmd = fs.gearCmd > 0.5 ? 0 : 1;
+    if (fs.type.gear === 'pump' && fs.gearCmd < 0.5) this.flashMessage('PUMP THE GEAR UP (HOLD GEAR)', 2);
   }
 
   protected cycleView(): void {
@@ -378,11 +478,41 @@ export class FlightScreen implements Screen {
     if (this.paused) this.drawPause(fb);
     this.frameMs = this.frameMs * 0.9 + (performance.now() - t0) * 0.1;
     if (this.debug) this.drawDebug(fb);
+    if (this.showTouch && this.lastTouch) {
+      const t = this.lastTouch;
+      const txt = `SINK ${t.sink.toFixed(1)}M/S SPD ${(t.speed * MPS_TO_MPH).toFixed(0)}MPH BANK ${(t.bank / DEG).toFixed(0)} PITCH ${(t.pitch / DEG).toFixed(0)} DRIFT ${(t.drift / DEG).toFixed(0)} ${t.surface.toUpperCase()} ${t.kind.toUpperCase()}`;
+      fillRect(fb, 0, 160, txt.length * 4 + 2, 7, C.BLACK);
+      drawText(fb, txt, 1, 161, C.SIGHT, 'tiny');
+    }
   }
 
   protected oilAmount(): number {
     const p = this.player;
     return p.type.engines === 1 ? Math.min(1, p.damage.oil * 1.2) : 0;
+  }
+
+  /** Assist: suitable fields within glide range, and the approach indicator. */
+  protected drawLandingAids(fb: FrameBuffer): void {
+    const me = this.player, fs = me.fs;
+    if (fs.onGround || me.status !== 'flying') return;
+    const engineOut = fs.engine !== 'running';
+    const approaching = fs.gear > 0.5 && fs.agl < 700 && fs.vel.y < 1;
+    if (!engineOut && !approaching && !(me.damage.fire > 0)) { this.fields = []; return; }
+    const now = this.world.time;
+    if (now - this.fieldsAt > 0.6) {
+      this.fieldsAt = now;
+      this.fields = findFields(this.world.ground, me, this.world.weather.wind);
+    }
+    drawFieldHighlights(fb, this.cam, this.world.ground, this.fields);
+    // Approach indicator for the field most nearly ahead.
+    let best: FieldCandidate | null = null, bs = Infinity;
+    for (const f of this.fields) {
+      const dx = f.touchdown.x - fs.pos.x, dz = f.touchdown.z - fs.pos.z;
+      const off = Math.abs(Math.atan2(Math.sin(Math.atan2(dx, dz) - fs.heading), Math.cos(Math.atan2(dx, dz) - fs.heading)));
+      const sc = off * 3000 + Math.hypot(dx, dz);
+      if (off < 0.8 && sc < bs) { bs = sc; best = f; }
+    }
+    if (best && fs.agl < 900) drawApproachIndicator(fb, 300, 40, approachState(me, best.touchdown, engineOut));
   }
 
   /** Assist mode: lead indicator on the nearest target and small markers on enemies in range. */
@@ -408,6 +538,8 @@ export class FlightScreen implements Screen {
       }
       if (d < 1500) drawText(fb, `${Math.round(d * 1.0936 / 10) * 10}`, x1 + 2, y0, C.FIRE_R, 'tiny');
     }
+    this.drawLandingAids(fb);
+    fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);
     if (nearest && nd < 900) {
       const muzzle = me.armament.guns[0]?.type.muzzle ?? 745;
       // The guns fire from the wings but converge on the sight line: aim the sight at the lead point.
@@ -473,6 +605,7 @@ export class FlightScreen implements Screen {
       fuelGallons: fs.fuel / GALLON_KG,
       fuelCapGallons: fs.type.fuelCapacity / GALLON_KG,
       ammoFrac: this.app.settings.ammoBar && this.app.settings.assist ? this.player.armament.frac : undefined,
+      pumpProgress: fs.type.gear === 'pump' && fs.gearCmd < 0.5 && fs.gear > 0 ? 1 - fs.gear : undefined,
     };
   }
 
@@ -510,7 +643,7 @@ export class FlightScreen implements Screen {
     });
     this.debugItems().forEach((it, i) => {
       fillRect(fb, 252, 64 + i * 9, 66, 8, C.BLACK);
-      rectOutline(fb, 252, 64 + i * 9, 66, 8, C.GREY_D);
+      rectOutline(fb, 252, 64 + i * 9, 66, 8, i === this.debugSel ? C.WHITE : C.GREY_D);
       drawText(fb, it.label, 254, 65 + i * 9, C.SIGHT, 'tiny');
     });
     // AI state above each aircraft.

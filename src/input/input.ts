@@ -13,7 +13,7 @@ export type Action =
   | 'start' | 'primer' | 'mags' | 'starter'
   | 'bailOut' | 'map' | 'debug' | 'pause' | 'help'
   | 'up' | 'down' | 'left' | 'right' | 'ok' | 'back'
-  | 'trackCycle' | 'panel' | 'boost' | 'canopy';
+  | 'trackCycle' | 'panel' | 'boost' | 'canopy' | 'debugNext' | 'debugAct';
 
 export interface Tap {
   /** In framebuffer pixels (0..320, 0..256). */
