@@ -50,3 +50,36 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   throttling as a stand-in for a mid-range phone, 40 aircraft in view held
   60 fps (about 1.6 ms of render time unthrottled). This still needs
   confirming on a real phone.
+
+## Flight model
+
+- **The stick commands load factor, not elevator angle.** Neutral stick holds
+  about 1 g, as a trimmed aeroplane would. Pulling asks for more G, up to the
+  aircraft's limit. The elevator then drives angle of attack towards
+  whatever that G needs, capped a little past the stall. So full back stick
+  at low speed stalls, and at high speed it pulls the G limit. Turn
+  performance comes out of lift and G limits, and a hard turn bleeds energy
+  through induced drag. This feels predictable on a touch stick and is the
+  same for the AI.
+- **Rotation is a command model** (target rates with first-order lags)
+  rather than integrated moments of inertia. It's stable at 50 Hz and easy
+  to tune per type.
+- **Relative performance** is checked by tests (`tests/flight.test.ts`)
+  rather than by matching historical figures:
+  - The Spitfire out-turns the 109 at every height.
+  - The Hurricane turns tightest below about 10,000 ft.
+  - The 109 has the best climb and dive.
+  - The Spitfire is fastest at altitude.
+  - The Hurricane is slowest.
+- **Big liberty: the 109's dive.** In the model the 109's dive advantage
+  comes partly from a later high-speed drag rise (`dragRiseV`/`dragRiseK`).
+  Historically it owed more to fuel injection, which let pilots bunt
+  straight into a dive. That is also modelled, through the Merlin's
+  negative-G cut-out.
+- **Engine heat** is a simple first-order model. Full power on the ground
+  heats slowly, emergency boost is fine within its time limit and overheats
+  well beyond it, and a glycol leak (from M4) cuts cooling until the engine
+  seizes.
+- **G tolerance** starts greying at 4.3 g. Sustained 6.5 g blacks out in a
+  few seconds, and 7.5 g in about 3. A blacked-out pilot's stick goes
+  neutral, which also holds for AI pilots.
