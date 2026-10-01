@@ -20,6 +20,8 @@ export interface SceneOpts {
   sun?: boolean;
   /** Rebuild the copper table (only for the main view; the mirror reuses it). */
   copper?: Uint8Array;
+  /** Tiny views (the mirror): coarse terrain only. */
+  coarse?: boolean;
 }
 
 const IDENTITY = new Quat();
@@ -83,7 +85,7 @@ export class SceneRenderer {
     const sunScreen = opts.sun !== false ? drawSun(fb, cam, world.sun) : null;
     const fogScale = 1.25 - world.weather.haze * 0.6;
     this.terrain.lowDetail = !!opts.lowDetail || this.lodBias > 0;
-    this.terrain.draw(fb, cam, world.sun, fogScale);
+    this.terrain.draw(fb, cam, world.sun, fogScale, !!opts.coarse);
     const r = this.r3d;
     r.sun.copy(world.sun);
     r.fogScale = fogScale;

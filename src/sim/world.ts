@@ -14,6 +14,8 @@ import { applyHit, controllable, DamageEvent, flightMods, tickDamage } from './d
 import { FlightEnv, GroundResponse, stepFlight, TouchdownInfo } from './flight';
 import { GroundModel, SURFACE_FRICTION } from './ground';
 import { stepGunner } from './guns';
+import { CloudField } from './clouds';
+import type { Balloon } from '../content/world/objects';
 import { Plane } from './plane';
 
 export interface Weather {
@@ -74,13 +76,6 @@ export interface WorldEvent {
   pos?: Vec3;
 }
 
-export interface Cloud {
-  pos: Vec3;
-  rx: number;
-  ry: number;
-  rz: number;
-}
-
 export class World {
   readonly rng: Rng;
   tick = 0;
@@ -95,7 +90,9 @@ export class World {
   readonly parachutes: Parachute[] = [];
   readonly fragments: Fragment[] = [];
   readonly groundFires: GroundFire[] = [];
-  readonly clouds: Cloud[] = [];
+  cloudField: CloudField | null = null;
+  /** Barrage balloons (and their cables) — dangerous to fly into. */
+  balloons: Balloon[] = [];
   /** Per-tick events (consumed by the screen for sound, R/T, haptics). */
   events: WorldEvent[] = [];
   /** Persistent log for the debrief. */
@@ -139,29 +136,12 @@ export class World {
 
   /** Is a straight line clear of cloud? */
   losClear(a: Vec3, b: Vec3): boolean {
-    for (const c of this.clouds) {
-      // Segment vs axis-aligned ellipsoid: scale space so it's a unit sphere.
-      const ax = (a.x - c.pos.x) / c.rx, ay = (a.y - c.pos.y) / c.ry, az = (a.z - c.pos.z) / c.rz;
-      const bx = (b.x - c.pos.x) / c.rx, by = (b.y - c.pos.y) / c.ry, bz = (b.z - c.pos.z) / c.rz;
-      const dx = bx - ax, dy = by - ay, dz = bz - az;
-      const l2 = dx * dx + dy * dy + dz * dz;
-      let t = l2 > 0 ? -(ax * dx + ay * dy + az * dz) / l2 : 0;
-      t = t < 0 ? 0 : t > 1 ? 1 : t;
-      const px = ax + dx * t, py = ay + dy * t, pz = az + dz * t;
-      if (px * px + py * py + pz * pz < 0.8) return false;
-    }
-    return true;
+    return this.cloudField ? this.cloudField.losClear(a, b) : true;
   }
 
   /** How deep inside a cloud a point is (0 = clear, 1 = solid). */
   cloudDensityAt(p: Vec3): number {
-    let best = 0;
-    for (const c of this.clouds) {
-      const x = (p.x - c.pos.x) / c.rx, y = (p.y - c.pos.y) / c.ry, z = (p.z - c.pos.z) / c.rz;
-      const d = x * x + y * y + z * z;
-      if (d < 1) best = Math.max(best, Math.min(1, (1 - d) * 3));
-    }
-    return best;
+    return this.cloudField ? this.cloudField.densityAt(p) : 0;
   }
 
   envFor(p: Plane): FlightEnv {
@@ -225,6 +205,7 @@ export class World {
       p.pilot.step(p.fs.nz, dt);
       if (p.flash > 0) p.flash -= dt;
       this.damageStep(p, dt);
+      if (this.balloons.length && p.status === 'flying' && p.pos.y < 2500) this.balloonStep(p);
       this.gunsStep(p, dt);
       this.bailStep(p, dt);
       if (p.fs.events.length && !p.isPlayer) p.fs.events.length = 0;
@@ -253,6 +234,28 @@ export class World {
       } else if (p.status === 'wreck') this.puff(at, 'black', 2.5, 5);
       else if (d.glycol > 0.05 && p.fs.engine !== 'off') this.puff(at, 'white', 1.2 + d.glycol * 2, 3);
       else if (d.oil > 0.1) this.puff(at, 'black', 1 + d.oil, 2.5);
+    }
+  }
+
+  /** Flying into a balloon or its cable does real harm. */
+  private balloonStep(p: Plane): void {
+    for (const b of this.balloons) {
+      if (b.down) continue;
+      const dx = p.pos.x - b.pos.x, dz = p.pos.z - b.pos.z;
+      if (Math.abs(dx) > 30 || Math.abs(dz) > 30) continue;
+      const hit = (zone: ZoneId, n: number) => {
+        for (let i = 0; i < n; i++) for (const e of applyHit(p.damage, p.type, zone, 3, false, -1, this.rng)) this.onDamageEvent(p, e, -1);
+      };
+      if (Math.hypot(dx, p.pos.y - b.pos.y, dz) < 10) {
+        b.down = true;
+        this.puff(b.pos, 'flash', 8, 1);
+        hit(this.rng.chance(0.5) ? 'wingL' : 'wingR', 6);
+        hit('fuselage', 3);
+      } else if (p.pos.y < b.pos.y && Math.hypot(dx, dz) < 2.5 + p.type.span * 0.3) {
+        // The cable: it saws into a wing.
+        b.down = true;
+        hit(dx > 0 ? 'wingL' : 'wingR', 12);
+      }
     }
   }
 

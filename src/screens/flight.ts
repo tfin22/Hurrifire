@@ -434,7 +434,7 @@ export class FlightScreen implements Screen {
     mc.mirror = true;
     mc.pos.copy(fs.pos).add(fs.q.rotate(new Vec3(0, 1.1, 0.4)));
     mc.setOrientation(fs.q.mul(Quat.fromEuler(Math.PI, 4 * DEG, 0)));
-    this.scene.draw(fb, mc, this.world, { skipPlaneId: this.player.id, lowDetail: true, sun: false });
+    this.scene.draw(fb, mc, this.world, { skipPlaneId: this.player.id, lowDetail: true, sun: false, coarse: true });
   }
 
   protected drawPadlockIndicator(fb: FrameBuffer): void {
@@ -523,9 +523,27 @@ export class FlightScreen implements Screen {
     }
   }
 
+  protected whiteout = 0;
+
+  /** Sun dazzle: looking into the sun washes the screen out. */
+  protected dazzleAmount(): number {
+    const sun = this.world.sun;
+    if (sun.y < 0.02 || this.whiteout > 0.3) return 0;
+    const f = this.cam.forward();
+    const ang = Math.acos(Math.max(-1, Math.min(1, f.dot(sun))));
+    const cone = (TUNING.effects.sunDazzleConeDeg * Math.PI) / 180 * 1.6;
+    if (ang > cone) return 0;
+    const k = 1 - ang / cone;
+    return k * k * 0.85 * (this.world.losClear(this.cam.pos, this.cam.pos.clone().addScaled(sun, 3000)) ? 1 : 0.2);
+  }
+
   effects(): ScreenEffects {
     const fx = noEffects();
     const pil = this.player.pilot;
+    const dens = this.world.cloudDensityAt(this.cam.pos);
+    this.whiteout += (dens - this.whiteout) * Math.min(1, TUNING.effects.cloudFadeRate / 50);
+    fx.white = this.whiteout * 0.92;
+    fx.dazzle = this.dazzleAmount();
     fx.grey = pil.grey;
     fx.black = pil.black;
     fx.red = pil.red * 0.8;

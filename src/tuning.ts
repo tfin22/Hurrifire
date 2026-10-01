@@ -36,8 +36,8 @@ export const TUNING = {
     lodMedBelowPx: 22,
     /** Fog: distance (m) at which each fog step applies. */
     fogSteps: [11000, 24000, 42000] as const,
-    terrainNearM: 2200,
-    terrainMidM: 9000,
+    terrainNearM: 3500,
+    terrainMidM: 14000,
     terrainFarM: 26000,
     terrainVeryFarM: 60000,
     retroFps: 12.5,

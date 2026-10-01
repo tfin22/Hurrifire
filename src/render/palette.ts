@@ -125,11 +125,20 @@ export const MAT = {
   town: { ramp: [C.SMOKE, C.GREY_D, C.GREY_L] },
   roof: { ramp: [C.RAF_EARTH_D, C.RAF_EARTH, C.RED] },
   cloud: { ramp: [C.GREY_L, C.CHALK, C.WHITE] },
+  cloudBase: { ramp: [C.GREY_D, C.GREY_L, C.GREY_L] },
   fire: { ramp: [C.FIRE_R, C.FIRE_Y], unlit: true },
   smoke: { ramp: [C.SMOKE, C.GREY_D, C.GREY_L] },
   panel: { ramp: [C.PANEL], unlit: true, noFog: true },
   balloon: { ramp: [C.GREY_D, C.GREY_L, C.CHALK] },
   crosses: { ramp: [C.BLACK], unlit: true },
+  pasture: { ramp: [C.FIELD, C.FIELD_L, C.FIELD_L] },
+  downs: { ramp: [C.FIELD_L, C.FIELD_L, C.STUBBLE] },
+  marsh: { ramp: [C.FIELD_D, C.FIELD, C.SKY_D] },
+  city: { ramp: [C.SMOKE, C.GREY_D, C.GREY_D] },
+  river: { ramp: [C.SEA_D, C.SEA_D, C.SEA] },
+  mud: { ramp: [C.RAF_EARTH, C.RAF_EARTH_L, C.GREY_L] },
+  beach: { ramp: [C.GREY_L, C.STUBBLE, C.CHALK] },
+  airfield: { ramp: [C.FIELD, C.FIELD_L, C.FIELD_L] },
 } satisfies Record<string, Material>;
 
 export type MaterialName = keyof typeof MAT;

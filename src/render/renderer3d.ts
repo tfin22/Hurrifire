@@ -33,6 +33,8 @@ export interface ModelOpts {
   noCollapse?: boolean;
   /** Extra detail-level drop (1990 mode). */
   lodBias?: number;
+  /** Non-uniform scale (clouds). */
+  scale?: [number, number, number];
 }
 
 type Item =
@@ -81,7 +83,8 @@ export class Renderer3D {
     const cam = this.cam;
     const t = new Float64Array(3);
     cam.toCam(pos.x, pos.y, pos.z, t);
-    const r = model.radius;
+    const sc = opts.scale;
+    const r = sc ? model.radius * Math.max(sc[0], sc[1], sc[2]) : model.radius;
     if (!cam.sphereVisible(t[0], t[1], t[2], r)) return;
     const dist = Math.hypot(t[0], t[1], t[2]);
     const pr = (cam.f * r) / Math.max(t[2], cam.near);
@@ -104,6 +107,7 @@ export class Renderer3D {
     for (let i = 0; i < 3; i++)
       for (let j = 0; j < 3; j++)
         mc[i * 3 + j] = a[i * 3] * rq[j] + a[i * 3 + 1] * rq[3 + j] + a[i * 3 + 2] * rq[6 + j];
+    if (sc) for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) mc[i * 3 + j] *= sc[j];
     let lod = opts.lod ?? (pr < TUNING.render.lodLowBelowPx ? 2 : pr < TUNING.render.lodMedBelowPx ? 1 : 0);
     if (opts.lod === undefined) lod = Math.min(2, lod + this.lodBias + (opts.lodBias ?? 0));
     lod = Math.min(lod, model.lods.length - 1);

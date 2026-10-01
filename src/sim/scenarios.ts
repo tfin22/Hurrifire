@@ -22,3 +22,13 @@ export function oneVersusOne(seed: number, ground: GroundModel, playerType: Airc
   w.homes.raf = new Vec3(0, 1000, 0);
   return w;
 }
+
+/** Free flight over the real map (milestone 5 test flight). */
+export function freeFlight(seed: number, ground: GroundModel, start: Vec3, heading: number, type: AircraftId = 'spitfire'): World {
+  const w = new World(seed, ground);
+  const p = w.addPlane(type, 'raf', 'Gannet Leader', 0.9);
+  p.isPlayer = true;
+  w.player = p;
+  p.fs.setAirborne(start, heading, 110);
+  return w;
+}

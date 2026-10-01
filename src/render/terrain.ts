@@ -18,7 +18,7 @@ import { TUNING } from '../tuning';
 export interface TerrainSource {
   /** Ground height (m) at world x, z. */
   heightAt(x: number, z: number): number;
-  /** Material id (index into MATERIAL_LIST) for the cell at (ix, iz) of the given size. */
+  /** Material id (index into MATERIAL_LIST) for the cell at (ix, iz) of the given size; -1 = don't draw. */
   cellMaterial(ix: number, iz: number, size: number): number;
   /** True if the cell is open water (flat, glints). */
   cellIsWater(ix: number, iz: number, size: number): boolean;
@@ -39,7 +39,7 @@ const tmp = new Float64Array(3);
 
 export class TerrainRenderer {
   bands: TerrainBand[] = [
-    { size: 250, range: TUNING.render.terrainNearM },
+    { size: 500, range: TUNING.render.terrainNearM },
     { size: 1000, range: TUNING.render.terrainMidM },
     { size: 4000, range: TUNING.render.terrainVeryFarM },
   ];
@@ -54,14 +54,17 @@ export class TerrainRenderer {
 
   constructor(public src: TerrainSource) {}
 
-  draw(fb: FrameBuffer, cam: Camera, sun: Vec3, fogScale: number): void {
+  /** Near-band detail polygons are drawn only this close (m). */
+  detailRange = 2000;
+
+  draw(fb: FrameBuffer, cam: Camera, sun: Vec3, fogScale: number, coarseOnly = false): void {
     this.stats.cells = 0;
     fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);
     const alt = cam.pos.y;
     // Each band covers a square of whole cells around the camera; a coarser
     // band skips only the cells entirely covered by the next finer band, so
     // there are never holes (overlaps are painted over by the finer band).
-    const bands = this.bands.filter((_b, i) => i !== 0 || alt < 1500);
+    const bands = coarseOnly ? [this.bands[this.bands.length - 1]] : this.bands.filter((_b, i) => i !== 0 || alt < 1500);
     const rects: { x0: number; z0: number; x1: number; z1: number }[] = [];
     for (const { size, range } of bands) {
       const n = Math.ceil(range / size);
@@ -111,6 +114,7 @@ export class TerrainRenderer {
       const dist = Math.sqrt(c.d) + 1;
       const fog = fogLevel(dist, fogScale);
       const matId = src.cellMaterial(c.ix, c.iz, size);
+      if (matId < 0) continue; // off the map: leave the haze
       const mat = MATERIAL_LIST[matId];
       // Slope shading: normal from the corner heights.
       const nx = (h00 + h01 - h10 - h11) / (2 * size);
@@ -122,12 +126,11 @@ export class TerrainRenderer {
       else colour = shadeIndex(mat, 0.25 + 0.75 * ld * ld, fog);
       this.quad(fb, cam, x0, z0, size, h00, h10, h11, h01, colour);
       this.stats.cells++;
-      if (near && !water && !this.lowDetail && src.nearDetail && fog === 0) {
-        const hAvg = (h00 + h10 + h11 + h01) / 4;
+      if (near && !water && !this.lowDetail && src.nearDetail && fog === 0 && c.d < this.detailRange * this.detailRange) {
         src.nearDetail(c.ix, c.iz, size, (pts, m) => {
           const mm = MATERIAL_LIST[m];
           const col = shadeIndex(mm, 0.25 + 0.75 * ld * ld, fog);
-          this.flatPoly(fb, cam, pts, hAvg + 0.5, col);
+          this.drapedPoly(fb, cam, pts, col);
         });
       }
     }
@@ -154,10 +157,11 @@ export class TerrainRenderer {
     }
   }
 
-  private flatPoly(fb: FrameBuffer, cam: Camera, pts: number[], h: number, colour: number): void {
+  /** A ground polygon draped over the terrain (heights at its corners, a little above). */
+  private drapedPoly(fb: FrameBuffer, cam: Camera, pts: number[], colour: number): void {
     const n = pts.length / 2;
     const w: number[] = [];
-    for (let i = 0; i < n; i++) w.push(pts[i * 2], h, pts[i * 2 + 1]);
+    for (let i = 0; i < n; i++) w.push(pts[i * 2], this.src.heightAt(pts[i * 2], pts[i * 2 + 1]) + 0.6, pts[i * 2 + 1]);
     this.emit(fb, cam, w, n, colour);
   }
 

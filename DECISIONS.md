@@ -111,3 +111,33 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   they extend and zoom rather than turn. With a Merlin-engined fighter on
   their tail they often bunt into a dive, which the pursuer can't follow
   without cutting out.
+
+## The world
+
+- **Generated geography.** `scripts/build-world.mjs` (`npm run world`) reads
+  Natural Earth 10m land, minor islands and rivers, and SRTM 1-arc-second
+  elevation (AWS "skadi" tiles), and caches the downloads in `.cache/`. It
+  writes `src/content/world/terrainData.ts` (~110 KB, committed), so the
+  build never needs the network. The output is:
+  - a 500 m surface-class grid (sea, fields, wood, downs, marsh, town, city,
+    river, mud, beach, orchard, hops, France, airfield, cliff, suburb),
+    run-length encoded;
+  - a 1 km height grid in 2 m units.
+- **The hand-authored layer** is `src/content/world/places.json`: airfields,
+  towns, landmarks, balloon barrages, extra rivers (the Medway, Swale,
+  Stour and others aren't in Natural Earth) and region shapes (Weald
+  woods, Downs, marshes, orchards, hops, mudflats, cliffs). The generator
+  rasterises these into the class grid, so per-tile surface types live in
+  the map data.
+- **Fields are generated, but consistently.** Each farmland cell is split
+  into one to four rectangular fields with hedges, hashed from its
+  coordinates. The renderer draws exactly the fields that `fieldAt()` and
+  `clearRun()` report to the landing model. Crops change with the date:
+  green corn, then gold, stubble, and ploughed land.
+- **Thames width** is stepped by longitude (1 cell in London, widening to
+  the estuary) because Natural Earth gives only a centreline there.
+- **Battersea has two chimneys.** The second pair was only built in 1955.
+- **Cliffs** are drawn as chalk-white coastal cells rather than vertical
+  faces. At 500 m resolution they read as the white line along the coast,
+  which is how they look from the air.
+- **Off the map** nothing is drawn, so the copper haze shows through.
