@@ -32,3 +32,21 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   buttons), `J` bail out, `M` map, `C` canopy, `K` collapse the panel,
   `,` wheel brakes, `N` toggle mouse-as-stick, `Esc` pause, `H` help.
   Holding `G` works the Spitfire's hand pump.
+
+## Renderer
+
+- **Models are built from data by a kit.** Each aircraft in
+  `content/models/` is a data description (fuselage cross-sections, wing
+  planform, tail, markings) that `kit.ts` turns into vertex/face lists at
+  load time, in three detail levels. Writing 100-face meshes out by hand as
+  raw numbers would be unreviewable; the generated data is still plain
+  vertex lists and convex faces, and the model viewer shows face counts.
+- **Decals** (roundels, crosses, fin flashes) are faces tagged with a parent
+  face. They're drawn immediately after the parent, so the painter's sort
+  never puts a roundel behind its wing.
+- **Half-Lambert shading** (0.5 + 0.5·n·sun) picks the ramp step, so faces
+  in shadow stay readable at 32 colours instead of going black.
+- **Perf check (milestone 2).** In headless Chromium with 6× CPU
+  throttling as a stand-in for a mid-range phone, 40 aircraft in view held
+  60 fps (about 1.6 ms of render time unthrottled). This still needs
+  confirming on a real phone.

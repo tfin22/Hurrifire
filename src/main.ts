@@ -1,8 +1,8 @@
 import { App } from './app';
-import { TestCardScreen } from './screens/testcard';
+import { BenchScreen } from './screens/bench';
 
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
-const app = new App(canvas, (a) => new TestCardScreen(a));
+const app = new App(canvas, (a) => new BenchScreen(a, () => {}));
 app.start();
 (window as unknown as { app: App }).app = app;
 
