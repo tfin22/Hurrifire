@@ -303,3 +303,31 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   Watch from the chase, fly-by, combat (over the shoulder towards the
   nearest enemy) or cockpit cameras, follow any aircraft, and run at up to
   the time-compression limit.
+
+## The other side (stretch)
+
+- **A 109 escort to London**, from the title menu: you lead a Schwarm of
+  four (in pairs, of course) as close escort for a dozen or more Dorniers
+  or Heinkels, from Cap Gris Nez to the docks or Woolwich and back, on one
+  of the big days of late August or September.
+- **The fuel gauge is the enemy.** You start at the rendezvous with 80% of
+  the 109's 400 litres. London and back at escort speed leaves about ten
+  minutes in hand; a fight at full throttle eats it. The red lamp lights
+  at 20%, roughly ten minutes at cruise, and blinks in the last few
+  minutes. Run dry over the Channel and it's a ditching, and the
+  Seenotdienst's chances depend on how close to France you are.
+- **Fighter Command sends squadrons up** as the raid comes in: Hurricanes
+  low for the bombers, Spitfires high for the escort (as Park wanted), more
+  over the target, and a few Spitfires chasing the raid home. Their
+  leaders are steered onto the raid every five seconds, as radar and the
+  controllers did.
+- **Home** is back over France with no RAF fighter within 8 km for 20
+  seconds: we skip the circuit at Marquise. Coming down in England means
+  captivity.
+- **Claims** follow the Luftwaffe rule: a witness, or a wreck on our side of
+  the Channel. Over England there is no wreck to inspect.
+- **R/T** is in English with the handful of words every 109 pilot used:
+  Indianer (enemy fighters), Pauke pauke (attacking), Horrido (a victory).
+  Callsigns and names are invented.
+- The sortie shares the world, raid, AI, debrief and replay with the RAF
+  sortie; the screen talks to either through one small interface.

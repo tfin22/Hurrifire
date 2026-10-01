@@ -211,6 +211,24 @@ export const TUNING = {
     woundedDays: [4, 14] as [number, number],
   },
 
+  escort: {
+    /** Fuel left at the rendezvous over Cap Gris Nez (fraction). */
+    startFuel: 0.8,
+    /** The red low-fuel lamp (fraction): about ten minutes at cruise. */
+    redLight: 0.2,
+    /** RAF squadrons sent up: when (s after the start), what, how many, height offset and lead (m ahead of the raid). */
+    raf: [
+      { at: 300, type: 'hurricane', n: 12, alt: -900, ahead: 16000, skill: 'average' },
+      { at: 540, type: 'spitfire', n: 12, alt: 1500, ahead: 12000, skill: 'average' },
+      { at: 900, type: 'hurricane', n: 9, alt: -400, ahead: 9000, skill: 'green' },
+      { at: 1500, type: 'spitfire', n: 6, alt: 600, ahead: -6000, skill: 'experte' },
+    ] as { at: number; type: 'hurricane' | 'spitfire'; n: number; alt: number; ahead: number; skill: 'green' | 'average' | 'experte' }[],
+    /** Seconds back over France with no enemy near before the sortie ends. */
+    safeAfter: 20,
+    /** No enemy within this range counts as clear (m). */
+    clearRange: 8000,
+  },
+
   sortie: {
     /** Seconds of cranking before the engine catches (or doesn't). */
     crankToCatch: 2.2,

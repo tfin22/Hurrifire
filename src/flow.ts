@@ -14,6 +14,10 @@ import { CampaignBoardScreen, CampaignEndScreen, CampaignStartScreen, RosterScre
 import { abortedSortie, applyAirfieldState, applySortie, nextSortieSpec } from './campaign/campaign';
 import type { SortieResult } from './sim/sortie';
 import { ReplayScreen } from './screens/replay';
+import { FlownSortie } from './screens/sortieScreen';
+import { EscortSortie, EscortSpec } from './sim/escort';
+import { Rng } from './core/rng';
+import { generateWeather } from './sim/weather';
 
 export class Flow {
   readonly game: Game;
@@ -29,6 +33,7 @@ export class Flow {
       logbook: () => this.app.setScreen(new LogbookScreen(this.app, this.game, () => this.toTitle())),
       settings: () => this.app.setScreen(new SettingsScreen(this.app, () => this.toTitle())),
       modelViewer: () => this.app.setScreen(new BenchScreen(this.app, () => this.toTitle(), allModels())),
+      escort: () => this.escort(),
     });
   }
 
@@ -96,21 +101,41 @@ export class Flow {
 
   fly(spec: SortieSpec, campaign?: { done: (r: SortieResult, replay: (back: () => void) => void) => void; quit: () => void }): void {
     if (!campaign) for (const af of this.game.map.airfields) { af.craters = []; af.damaged = 0; }
-    const sortie = new Sortie(spec, this.game.map, this.game.objects);
-    const screen: SortieScreen = new SortieScreen(this.app, sortie, (res) => {
-      const replay = (back: () => void) => this.replay(sortie, screen, back);
+    this.flySortie(() => new Sortie(spec, this.game.map, this.game.objects), (res, replay) => {
       if (campaign) { campaign.done(res, replay); return; }
       this.game.record(res);
       const debrief: DebriefScreen = new DebriefScreen(this.app, res, () => this.app.setScreen(new LogbookScreen(this.app, this.game, () => this.toTitle())), () => replay(() => this.app.setScreen(debrief)));
       this.app.setScreen(debrief);
     }, () => (campaign ? campaign.quit() : this.toTitle()));
+  }
+
+  /** The other side: a 109 escort to London and back, on one of the big days. */
+  escort(): void {
+    const seed = (Date.now() & 0x7fffffff) >>> 0;
+    const rng = new Rng(seed);
+    const [month, day] = rng.pick([[8, 24], [8, 30], [9, 7], [9, 9], [9, 11], [9, 15], [9, 27], [9, 30]] as [number, number][]);
+    const weather = generateWeather(rng, month);
+    weather.cover = Math.min(weather.cover, 0.45);
+    const spec: EscortSpec = {
+      seed, month, day, hour: 11 + rng.int(5), weather, playerName: 'Lt Brandt', colour: rng.pick(['Gelb', 'Rot', 'Weiss', 'Schwarz']),
+      convergenceM: 300, assist: this.app.settings.assist,
+    };
+    this.flySortie(() => new EscortSortie(spec, this.game.map, this.game.objects), (res, replay) => {
+      const debrief: DebriefScreen = new DebriefScreen(this.app, res, () => this.toTitle(), () => replay(() => this.app.setScreen(debrief)));
+      this.app.setScreen(debrief);
+    }, () => this.toTitle());
+  }
+
+  private flySortie(make: () => FlownSortie, done: (r: SortieResult, replay: (back: () => void) => void) => void, quit: () => void): void {
+    const sortie = make();
+    const screen: SortieScreen = new SortieScreen(this.app, sortie, (res) => done(res, (back) => this.replay(sortie, make, screen, back)), quit);
     this.app.setScreen(screen);
   }
 
   /** Re-run a finished sortie from its seed and recorded controls. */
-  private replay(sortie: Sortie, flown: SortieScreen, back: () => void): void {
+  private replay(sortie: FlownSortie, make: () => FlownSortie, flown: SortieScreen, back: () => void): void {
     sortie.rewind();
-    const again = new Sortie(sortie.spec, this.game.map, this.game.objects);
+    const again = make();
     this.app.setScreen(new ReplayScreen(this.app, again, flown.recording, flown.world.autoRudder, back));
   }
 }

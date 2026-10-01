@@ -21,6 +21,7 @@ export interface MenuActions {
   logbook(): void;
   settings(): void;
   modelViewer(): void;
+  escort(): void;
 }
 
 export class TitleScreen implements Screen {
@@ -38,10 +39,11 @@ export class TitleScreen implements Screen {
       { label: 'CAMPAIGN 1940', act: () => this.actions.campaign() },
       { label: 'SCRAMBLE!', act: () => this.actions.scramble() },
       { label: 'QUICK COMBAT', act: () => this.actions.quickCombat() },
+      { label: 'THE OTHER SIDE', act: () => this.actions.escort() },
       { label: 'LOGBOOK', act: () => this.actions.logbook() },
       { label: 'SETTINGS', act: () => this.actions.settings() },
       { label: 'MODEL VIEWER', act: () => this.actions.modelViewer() },
-    ], 90, 146, 140, 14);
+    ], 90, 140, 140, 13);
   }
 
   frame(): void {
@@ -91,8 +93,8 @@ export class TitleScreen implements Screen {
     const logo = 'SCRAMBLE!';
     drawTextScaled(fb, logo, (W - scaledWidth(logo, 3)) / 2, 18, C.SIGHT, 3, C.BLACK);
     drawTextCentered(fb, 'THE BATTLE OF BRITAIN  -  SUMMER 1940', 160, 50, C.WHITE, 'topaz', C.BLACK);
-    fillRect(fb, 70, 138, 180, 94, C.BLACK);
-    fillRect(fb, 72, 140, 176, 90, C.SMOKE);
+    fillRect(fb, 70, 132, 180, 99, C.BLACK);
+    fillRect(fb, 72, 134, 176, 95, C.SMOKE);
     this.menu.draw(fb);
     drawText(fb, `${this.game.pilot.name.toUpperCase()}  ${this.game.pilot.sorties} SORTIES`, 6, 246, C.CHALK, 'tiny');
     drawText(fb, 'A PERSONAL HOMAGE. ALL ART, SOUND AND CODE ORIGINAL.', 100, 246, C.GREY_L, 'tiny');

@@ -23,6 +23,7 @@ const app = new App(canvas, (a) => {
     (window as unknown as { flow: Flow }).flow = flow;
     if (qs.has('qc')) { queueMicrotask(() => flow.fly(flow.game.quickCombatSpec({ playerType: 'spitfire', raid: (qs.get('qc') || 'bombers') as 'bombers', escort: true, weather: 'cumulus', wingmen: +(qs.get('wing') ?? 2) }, 1940))); }
     if (qs.has('scramble')) { queueMicrotask(() => flow.scramble()); }
+    if (qs.has('escort')) { queueMicrotask(() => flow.escort()); }
     // ?camp: the campaign board; &new starts afresh, &day=N jumps to the Nth campaign day (testing).
     if (qs.has('camp')) {
       queueMicrotask(() => {

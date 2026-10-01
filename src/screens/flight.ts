@@ -692,6 +692,8 @@ export class FlightScreen implements Screen {
       fuelCapGallons: fs.type.fuelCapacity / GALLON_KG,
       ammoFrac: this.app.settings.ammoBar && this.app.settings.assist ? this.player.armament.frac : undefined,
       pumpProgress: fs.type.gear === 'pump' && fs.gearCmd < 0.5 && fs.gear > 0 ? 1 - fs.gear : undefined,
+      // The 109's red lamp: about ten minutes' fuel left.
+      redLamp: fs.type.id === 'bf109' ? fs.fuel < fs.type.fuelCapacity * TUNING.escort.redLight && (fs.fuel > fs.type.fuelCapacity * 0.08 || Math.floor(this.world.time * 2) % 2 === 0) : undefined,
     };
   }
 

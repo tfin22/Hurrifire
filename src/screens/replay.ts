@@ -8,9 +8,8 @@ import type { ControlFrame } from '../input/input';
 import { drawText, drawTextCentered } from '../render/font';
 import type { FrameBuffer } from '../render/framebuffer';
 import { C } from '../render/palette';
-import type { Sortie } from '../sim/sortie';
 import { TUNING } from '../tuning';
-import { SortieScreen } from './sortieScreen';
+import { FlownSortie, SortieScreen } from './sortieScreen';
 
 const IDLE: ControlFrame = { pitch: 0, roll: 0, yaw: 0, throttle: 0, fire: false, boost: false, brake: false, pump: false };
 
@@ -19,7 +18,7 @@ export class ReplayScreen extends SortieScreen {
   private ended = false;
   private blink = 0;
 
-  constructor(app: App, sortie: Sortie, private frames: readonly ControlFrame[], autoRudder: boolean, private end: () => void) {
+  constructor(app: App, sortie: FlownSortie, private frames: readonly ControlFrame[], autoRudder: boolean, private end: () => void) {
     super(app, sortie, () => this.finish(), () => this.finish());
     this.world.autoRudder = autoRudder;
     this.view = 'chase';

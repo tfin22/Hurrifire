@@ -7,7 +7,7 @@ import { FlightState } from '../sim/flight';
 import { FrameBuffer, W } from './framebuffer';
 import { drawText, drawTextCentered } from './font';
 import { C } from './palette';
-import { fillCircle, fillConvex, fillRect, hline, line, pset, rectOutline, stippleRect, vline } from './raster';
+import { circle, fillCircle, fillConvex, fillRect, hline, line, pset, rectOutline, stippleRect, vline } from './raster';
 
 export const PANEL_TOP_FULL = 172;
 export const PANEL_TOP_SLIM = 242;
@@ -167,6 +167,8 @@ export interface PanelData {
   pumpProgress?: number;
   ammoFrac?: number;
   oilOnScreen?: number;
+  /** The 109's red low-fuel lamp. */
+  redLamp?: boolean;
 }
 
 export function drawPanel(fb: FrameBuffer, L: CockpitLayout, d: PanelData, slim: boolean): void {
@@ -187,6 +189,7 @@ export function drawPanel(fb: FrameBuffer, L: CockpitLayout, d: PanelData, slim:
     ];
     let x = 4;
     for (const it of items) { drawText(fb, it, x, y + 4, C.WHITE, 'tiny'); x += it.length * 4 + 7; }
+    if (d.redLamp) fillCircle(fb, 290, y + 6, 3, C.FIRE_R);
     gearLamps(fb, 300, y + 4, d);
     return;
   }
@@ -247,6 +250,10 @@ export function drawPanel(fb: FrameBuffer, L: CockpitLayout, d: PanelData, slim:
   dialFace(fb, 242, ly, 12, 4, -120, 120, 1);
   needle(fb, 242, ly, valueAngle(d.fuelGallons, 0, d.fuelCapGallons, -120, 120), 10, d.fuelGallons < d.fuelCapGallons * 0.15 ? C.FIRE_R : C.WHITE);
   drawText(fb, 'FUEL', 235, ly + 5, C.GREY_L, 'tiny');
+  if (d.redLamp !== undefined) {
+    fillCircle(fb, 256, ly - 10, 3, d.redLamp ? C.FIRE_R : C.GREY_D);
+    circle(fb, 256, ly - 10, 3, C.BLACK);
+  }
   dialFace(fb, 274, ly - 4, 9, 4, -120, 120, 1);
   needle(fb, 274, ly - 4, valueAngle(fs.oilTemp, 0, 120, -120, 120), 7);
   drawText(fb, 'OIL', 269, ly + 7, C.GREY_L, 'tiny');

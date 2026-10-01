@@ -13,7 +13,31 @@ import { fillRect, pset } from '../render/raster';
 import { makeWorldLayer, Plume } from '../render/worldLayer';
 import { lonLatToXZ } from '../content/world/map';
 import { Vec3 } from '../core/math';
-import { Sortie, SortieResult } from '../sim/sortie';
+import type { SortieResult } from '../sim/sortie';
+import type { World } from '../sim/world';
+import type { WorldMap } from '../content/world/map';
+import type { WorldObjects } from '../content/world/objects';
+import type { Ship } from '../render/worldLayer';
+import type { RTMessage } from '../sim/controller';
+
+/** What the screen needs of a sortie: the RAF scramble, or the 109 escort. */
+export interface FlownSortie {
+  readonly world: World;
+  readonly map: WorldMap;
+  readonly objects: WorldObjects;
+  readonly ships: Ship[];
+  readonly spec: { start: 'readiness' | 'air'; month: number; day: number; home: string; leading: boolean };
+  readonly controller: { readonly log: RTMessage[] };
+  readonly prompts: string[];
+  readonly result: SortieResult | null;
+  readonly phase: string;
+  readonly engaged: boolean;
+  step(f: ControlFrame | null): void;
+  /** Order buttons once engaged (default: the RAF squadron's four). */
+  readonly orderButtons?: ContextButton[];
+  /** Put shared map state back as it was at the start (for a replay). */
+  rewind(): void;
+}
 import { TUNING } from '../tuning';
 import { FlightScreen } from './flight';
 import { drawMap, OpsPlot } from './mapView';
@@ -32,7 +56,7 @@ export class SortieScreen extends FlightScreen {
   /** Drop back to x1 when the enemy is near (not in a replay). */
   protected dropCompression = true;
 
-  constructor(app: App, readonly sortie: Sortie, private done: (r: SortieResult) => void, quit: () => void) {
+  constructor(app: App, readonly sortie: FlownSortie, private done: (r: SortieResult) => void, quit: () => void) {
     super(app, { world: sortie.world, terrain: sortie.map, onExit: quit });
     const spec = sortie.spec;
     const plumes = spec.month > 9 || (spec.month === 9 && spec.day >= 7) ? docksPlume(sortie) : [];
@@ -144,17 +168,17 @@ export class SortieScreen extends FlightScreen {
     }
     const b = super.contextButtons();
     if (so.engaged && so.spec.leading) {
-      b.unshift(
+      b.unshift(...(so.orderButtons ?? [
         { action: 'order1', label: 'BOMBERS' }, { action: 'order2', label: 'ESCORT' },
         { action: 'order3', label: 'FOLLOW' }, { action: 'order4', label: 'RE-FORM' },
-      );
+      ]));
     }
     return b;
   }
 }
 
 /** The docks, burning since the afternoon of 7 September. */
-function docksPlume(sortie: Sortie): Plume[] {
+function docksPlume(sortie: FlownSortie): Plume[] {
   const [x, z] = lonLatToXZ(51.502, -0.02);
   const fresh = sortie.spec.month === 9 && sortie.spec.day < 10;
   return [{ pos: new Vec3(x, sortie.map.heightAt(x, z), z), height: fresh ? 4500 : 2500 }];
