@@ -444,3 +444,32 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   by on a phone.
 - The keys line under Settings ran off the screen. It now takes three lines
   and includes V (homing) and X (engine off).
+
+## Arcade mode
+
+The playtest verdict was that the game is accurate but not fun: too much
+chasing, a fight too quick for the aircraft's responses, and no loop
+without blacking out. Arcade is now a third mode (Settings: MODE cycles
+Arcade, Assist, Authentic), and it is the default. Arcade includes
+everything Assist does, plus:
+
+- **Straight into the fight.** Scrambles and campaign sorties start in the
+  air, 800 m above the raid and about 7 km off it, turned in towards it. The
+  raid is just crossing the coast. Contact comes in about 20 seconds
+  instead of a ten-minute climb.
+- **A quicker, stronger aircraft.** Pitch and roll respond 50% faster, and
+  the engine gives 35% more thrust, so you can overhaul bombers and climb
+  out of trouble.
+- **No blackout or greying, no negative-G cut-out, no spins.** Full back
+  stick always holds the wing at the buffet. A loop from 300 mph at full
+  stick goes all the way round.
+- **Gunnery that rewards a hit.** Your rounds do 2.5 times the damage and
+  enemy rounds do you half. Big targets still applies if it's on.
+- **A softer enemy.** Every raid group is one grade less skilled (aces
+  become average pilots, average become green).
+
+All of it applies only to the player's aircraft and the raid. The real
+model is untouched underneath, and Assist and Authentic play exactly as
+before. The arcade flag is kept with the world, so replays re-run the same
+fight. The other side (the 109 escort) gets the arcade handling and
+damage rules too. It already starts in the air with the bombers.

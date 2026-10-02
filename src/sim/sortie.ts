@@ -126,6 +126,28 @@ export function homingTo(map: WorldMap, pos: Vec3, raf: boolean, wind: Vec3, onl
   return { field, landDir: ((landDir % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) };
 }
 
+const EASIER: Record<SkillLevel, SkillLevel> = { experte: 'average', average: 'green', green: 'green' };
+
+/**
+ * Arcade mode: skip the scramble and the long climb. The squadron starts in
+ * the air above and to one side of the raid's track, the raid already
+ * crossing the coast, and the enemy a grade less skilled.
+ */
+export function arcadeSpec(spec: SortieSpec): SortieSpec {
+  const A = TUNING.arcade;
+  const raids = spec.raids.map((r) => ({ ...r, groups: r.groups.map((g) => ({ ...g, skill: EASIER[g.skill] })) }));
+  if (spec.start === 'air' || !raids.length) return { ...spec, raids };
+  const r = raids[0] = { ...raids[0], delay: 0, start: raids[0].entry.clone().lerp(raids[0].start, 0.05) };
+  // Ahead of the raid on its track and off to one side, turned in towards it.
+  const tx = r.target.x - r.start.x, tz = r.target.z - r.start.z, l = Math.hypot(tx, tz) || 1;
+  const px = r.start.x + (tx / l) * A.startAhead - (tz / l) * A.startAside;
+  const pz = r.start.z + (tz / l) * A.startAhead + (tx / l) * A.startAside;
+  return {
+    ...spec, raids, start: 'air', underAttack: false,
+    airStart: { pos: new Vec3(px, r.alt + A.startAbove, pz), heading: Math.atan2(r.start.x - px, r.start.z - pz) },
+  };
+}
+
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export class Sortie {

@@ -329,6 +329,22 @@ export const TUNING = {
     maxLabels: 6,
   },
 
+  /** Arcade mode: the player's aircraft and the fight made friendlier. */
+  arcade: {
+    /** Extra engine thrust: overhaul the bombers, out-climb trouble. */
+    thrust: 1.35,
+    /** Quicker pitch and roll. */
+    pitch: 1.5,
+    roll: 1.5,
+    /** The player's rounds do this much more damage; enemy rounds this much less. */
+    damageDealt: 2.5,
+    damageTaken: 0.5,
+    /** The sortie starts in the air this far (m) ahead of the raid on its track, to one side, and above. */
+    startAhead: 6000,
+    startAside: 4000,
+    startAbove: 800,
+  },
+
   targets: {
     /** Big targets: enemies are drawn and hit this much larger at range... */
     scale: 2.0,

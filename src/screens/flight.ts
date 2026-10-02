@@ -68,6 +68,7 @@ export class FlightScreen implements Screen {
     this.world = opts.world;
     this.world.stallGuard = app.settings.stallGuard;
     this.world.bigTargets = app.settings.bigTargets;
+    this.world.arcade = app.settings.arcade;
     this.scene = new SceneRenderer(opts.terrain);
     this.L = cockpitLayout(app.settings.slimPanel);
   }

@@ -1,6 +1,11 @@
 // Player settings, persisted separately from the campaign save.
 
 export interface Settings {
+  /**
+   * Arcade (implies assist): quicker, tougher aircraft that never blacks out,
+   * hits harder, and starts in the air near the raid.
+   */
+  arcade: boolean;
   /** Assist adds lead indicator, spotting markers, glide ring, approach aid, one-button start. */
   assist: boolean;
   /** Optional ammunition bar on the HUD (forced off in Authentic). */
@@ -31,6 +36,7 @@ export interface Settings {
 const KEY = 'scramble.settings.v1';
 
 export const defaultSettings = (): Settings => ({
+  arcade: true,
   assist: true,
   ammoBar: false,
   autoRudder: true,
