@@ -69,6 +69,31 @@ export function fillConvex(fb: FrameBuffer, xs: ArrayLike<number>, ys: ArrayLike
   rasterStats.polys++;
 }
 
+/** Convex polygon filled with a checkerboard stipple (every other pixel). */
+export function stippleConvex(fb: FrameBuffer, xs: ArrayLike<number>, ys: ArrayLike<number>, n: number, c: number): void {
+  // Fill into a scratch copy of the span tables, then plot alternate pixels.
+  if (n < 3) return;
+  let minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < n; i++) { if (ys[i] < minY) minY = ys[i]; if (ys[i] > maxY) maxY = ys[i]; }
+  const y0 = Math.max(fb.y0, Math.ceil(minY - 0.5)), y1 = Math.min(fb.y1 - 1, Math.ceil(maxY - 0.5) - 1);
+  for (let y = y0; y <= y1; y++) {
+    let l = Infinity, r = -Infinity;
+    const yc = y + 0.5;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const ya = ys[i], yb = ys[j];
+      if ((ya <= yc && yb > yc) || (yb <= yc && ya > yc)) {
+        const x = xs[i] + ((yc - ya) / (yb - ya)) * (xs[j] - xs[i]);
+        if (x < l) l = x;
+        if (x > r) r = x;
+      }
+    }
+    if (l === Infinity) continue;
+    const xl = Math.max(fb.x0, Math.ceil(l - 0.5)), xr = Math.min(fb.x1, Math.ceil(r - 0.5));
+    for (let x = xl + ((xl + y) & 1); x < xr; x += 2) fb.px[y * W + x] = c;
+  }
+}
+
 export function fillRect(fb: FrameBuffer, x: number, y: number, w: number, h: number, c: number): void {
   const xa = Math.max(fb.x0, x | 0), xb = Math.min(fb.x1, (x + w) | 0);
   const ya = Math.max(fb.y0, y | 0), yb = Math.min(fb.y1, (y + h) | 0);

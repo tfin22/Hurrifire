@@ -1,0 +1,895 @@
+// The in-flight screen: cockpit and external views, controls → simulation,
+// G and buffet effects, time compression, the HUD and debug readouts.
+
+import { drawHoming, drawSpotting } from './spotting';
+import type { Homing } from '../sim/sortie';
+import { WorldMap } from '../content/world/map';
+import type { App, Screen } from '../app';
+import { clamp, DEG, MPS_TO_MPH, M_TO_FT, Quat, Vec3 } from '../core/math';
+import { Rng } from '../core/rng';
+import { ContextButton } from '../input/devices';
+import { ControlFrame, quantiseControls, SimCmd } from '../input/input';
+import { Camera } from '../render/camera';
+import { cockpitLayout, CockpitLayout, drawCanopyFrame, drawGunsight, drawOilScreen, drawPanel, drawRearFrame, viewMessage } from '../render/cockpit';
+import { noEffects, ScreenEffects } from '../render/display';
+import { drawText, drawTextScaled, scaledWidth, textWidth } from '../render/font';
+import { FrameBuffer } from '../render/framebuffer';
+import { C } from '../render/palette';
+import { fillRect, rasterStats } from '../render/raster';
+import { SceneRenderer } from '../render/scene';
+import { TerrainSource } from '../render/terrain';
+import { Plane } from '../sim/plane';
+import { leadPoint } from '../sim/ballistics';
+import { damageFraction, fireTimeLeft } from '../sim/damage';
+import { haptics } from '../input/devices';
+import { fillConvex, line, rectOutline, pset } from '../render/raster';
+import { approachState, drawApproachIndicator, drawFieldHighlights, FieldCandidate, findFields } from './landingAids';
+import { stallSpeed } from '../content/aircraft';
+import { World } from '../sim/world';
+import { TUNING } from '../tuning';
+
+const DEBUG_DAMAGE = ['GLYCOL', 'OIL', 'FIRE', 'AILERON', 'ELEVATOR', 'RUDDER', 'GEAR ONE', 'GEAR NONE', 'FLAPS', 'WOUND', 'SEIZE'];
+
+export type ViewMode = 'cockpit' | 'padlock' | 'chase' | 'flyby' | 'combat';
+
+export interface FlightScreenOpts {
+  world: World;
+  terrain: TerrainSource;
+  onExit: () => void;
+}
+
+const GALLON_KG = 3.27;
+
+export class FlightScreen implements Screen {
+  touchMode: 'flight' | 'menu' = 'flight';
+  readonly world: World;
+  readonly scene: SceneRenderer;
+  view: ViewMode = 'cockpit';
+  timeIdx = 0;
+  paused = false;
+  debug = false;
+  /** Recorded controls, one per tick, for replays. */
+  readonly recording: ControlFrame[] = [];
+  protected cam = new Camera();
+  protected mirrorCam = new Camera();
+  protected L: CockpitLayout;
+  protected fxRng = new Rng(99); // render-only randomness (shake), not part of the sim
+  protected lookSide: -1 | 1 = -1;
+  protected padlockId = -1;
+  protected flybyPos = new Vec3();
+  protected chaseQ = new Quat();
+  protected boostToggle = false;
+  protected message = '';
+  protected messageT = 0;
+  protected frameMs = 0;
+  protected pauseSel = 0;
+
+  constructor(protected app: App, protected opts: FlightScreenOpts) {
+    this.world = opts.world;
+    this.world.stallGuard = app.settings.stallGuard;
+    this.world.bigTargets = app.settings.bigTargets;
+    this.scene = new SceneRenderer(opts.terrain);
+    this.L = cockpitLayout(app.settings.slimPanel);
+  }
+
+  get player(): Plane {
+    return this.world.player!;
+  }
+
+  // ------------------------------------------------------------ input
+
+  frame(): void {
+    const s = this.app.input;
+    if (s.consume('debug')) this.debug = !this.debug;
+    if (s.consume('pause')) { this.paused = !this.paused; this.touchMode = this.paused ? 'menu' : 'flight'; this.app.touch.setMode(this.touchMode); }
+    if (this.paused) {
+      this.pauseMenu();
+      return;
+    }
+    if (s.consume('view1')) this.cycleView();
+    if (s.consume('view2')) this.view = 'padlock';
+    if (s.consume('view3')) this.view = 'chase';
+    if (s.consume('view4')) { this.view = 'flyby'; this.placeFlyby(); }
+    if (s.consume('padlock')) this.togglePadlock();
+    if (s.consume('timeUp')) this.timeIdx = Math.min(TUNING.sim.timeCompression.length - 1, this.timeIdx + 1);
+    if (s.consume('timeDown')) this.timeIdx = Math.max(0, this.timeIdx - 1);
+    if (s.consume('panel')) { this.app.settings.slimPanel = !this.app.settings.slimPanel; this.L = cockpitLayout(this.app.settings.slimPanel); this.app.saveSettings(); }
+    if (s.consume('boost')) this.boostToggle = !this.boostToggle;
+    if (s.consume('flaps')) this.cmd('flaps');
+    if (s.consume('gear')) this.gearAction();
+    if (s.consume('bailOut')) this.requestBail();
+    if (s.consume('engineOff')) this.cmd('engineOff');
+    if (this.debug) this.debugTaps();
+    this.consumeEvents();
+    if (s.lookBack && this.app.input.roll !== 0) this.lookSide = this.app.input.roll > 0 ? 1 : -1;
+    this.updateSound();
+  }
+
+  private switchOffHint = false;
+  private lastFired = 0;
+  private shotAt = -1e9;
+  private lastGear = 0;
+
+  /** The engine, guns, wind and buffet for the sound chip. */
+  protected updateSound(): void {
+    const me = this.player;
+    const fs = me.fs;
+    if (this.paused || me.status === 'destroyed' || this.playerChute()) { this.app.audio.flight(null); return; }
+    const id = me.type.id;
+    const kind = id === 'spitfire' || id === 'hurricane' ? 'merlin' : id === 'bf109' || id === 'bf110' ? 'db601' : 'radial';
+    const fired = me.armament.fired;
+    const now = performance.now();
+    if (fired > this.lastFired) this.shotAt = now;
+    this.lastFired = fired;
+    const shooting = now - this.shotAt < 120;
+    const eight = me.type.guns.length >= 8;
+    // The gear pump: a click with each stroke.
+    if (fs.type.gear === 'pump' && Math.abs(fs.gear - this.lastGear) > 0.06) { this.app.sound('pump', 0.5); this.lastGear = fs.gear; }
+    this.app.audio.flight({
+      engine: fs.engine === 'running' || fs.engine === 'coughing' || fs.engine === 'starting' ? kind : null,
+      rpmFrac: fs.rpm / 2600,
+      throttle: fs.throttle,
+      guns: shooting ? (eight ? 8 : 4) : 0,
+      speed: fs.tas,
+      buffet: fs.onGround ? 0 : fs.buffet,
+      inside: this.view === 'cockpit' || this.view === 'padlock',
+    });
+  }
+
+  protected requestBail(): void {
+    const p = this.player;
+    if (p.fs.onGround || (p.status !== 'flying' && p.status !== 'wreck')) return;
+    if (p.fs.agl < 150) { this.flashMessage('TOO LOW TO JUMP!'); return; }
+    this.cmd('bailOut');
+    this.flashMessage('CANOPY OPEN - GETTING OUT', 2);
+  }
+
+  /** The player's parachute, once out. */
+  protected playerChute() {
+    return this.world.parachutes.find((c) => c.fromPlane === this.player.id && c.name === 'pilot');
+  }
+
+  protected debugSel = 0;
+
+  protected debugTaps(): void {
+    const s = this.app.input;
+    const n = this.debugItems().length;
+    while (s.consume('debugNext')) this.debugSel = (this.debugSel + 1) % n;
+    while (s.consume('debugAct')) this.debugItems()[this.debugSel]?.act();
+    for (const t of s.taps) {
+      if (t.x < 250 || t.y > 175) continue;
+      const i = Math.floor((t.y - 64) / 9);
+      const items = this.debugItems();
+      if (i >= 0 && i < items.length) items[i].act();
+    }
+  }
+
+  protected debugItems(): { label: string; act: () => void }[] {
+    const ch = this.world.cheats;
+    return [
+      { label: `INVULN ${ch.invulnerable ? 'ON' : 'OFF'}`, act: () => (ch.invulnerable = !ch.invulnerable) },
+      { label: `AMMO ${ch.unlimitedAmmo ? 'INF' : 'NORM'}`, act: () => (ch.unlimitedAmmo = !ch.unlimitedAmmo) },
+      { label: 'STOP ENGINE', act: () => { this.player.fs.engine = 'dead'; } },
+      { label: 'GLYCOL HIT', act: () => { this.player.damage.glycol = 0.6; } },
+      { label: 'FIRE!', act: () => { this.player.damage.fire = 0.05; } },
+      { label: `AF ${this.debugAirfields()[this.debugAf]?.name.slice(0, 10).toUpperCase() ?? '-'}`, act: () => { this.debugAf = (this.debugAf + 1) % Math.max(1, this.debugAirfields().length); } },
+      { label: 'SPAWN FINAL', act: () => this.spawnFinal() },
+      { label: 'SPAWN 600M FIELD', act: () => this.spawnOverField() },
+      { label: `DMG ${DEBUG_DAMAGE[this.debugDmg]}`, act: () => { this.debugDmg = (this.debugDmg + 1) % DEBUG_DAMAGE.length; } },
+      { label: 'APPLY DMG', act: () => this.applyDebugDamage(DEBUG_DAMAGE[this.debugDmg]) },
+      { label: `TOUCH INFO ${this.showTouch ? 'ON' : 'OFF'}`, act: () => { this.showTouch = !this.showTouch; } },
+    ];
+  }
+
+  protected debugAirfields(): { name: string; pos: Vec3; dir: number; half: number }[] {
+    const g = this.world.ground as unknown as { airfields?: { name: string; pos: Vec3; dir: number; half: number; kind: string }[] };
+    return (g.airfields ?? []).filter((a) => a.kind !== 'luftwaffe');
+  }
+
+  /** Debug: put the player on a 2.5 km final to an airfield, gear and flaps down. */
+  protected spawnFinal(): void {
+    const af = this.debugAirfields()[this.debugAf];
+    if (!af) return;
+    const fs = this.player.fs;
+    const d = (af.dir * Math.PI) / 180;
+    const tx = af.pos.x - Math.sin(d) * (af.half - 80), tz = af.pos.z - Math.cos(d) * (af.half - 80);
+    const vs = stallSpeed(fs.type, fs.mass, 1.225, 1);
+    fs.setAirborne(new Vec3(tx - Math.sin(d) * 2500, af.pos.y + fs.type.gearHeight + 2500 * 0.075, tz - Math.cos(d) * 2500), d, vs * 1.35);
+    fs.gear = fs.gearCmd = 1;
+    fs.flaps = fs.flapsCmd = 1;
+    this.player.status = 'flying';
+    this.player.landing = { bounces: 0, result: null, contacts: [], field: null, at: null };
+    this.app.input.throttle = 0.35;
+  }
+
+  /** Debug: 600 m over a field with the engine stopped. */
+  protected spawnOverField(): void {
+    const fs = this.player.fs;
+    fs.setAirborne(new Vec3(fs.pos.x, this.world.ground.heightAt(fs.pos.x, fs.pos.z) + 600, fs.pos.z), fs.heading, fs.type.bestGlide);
+    fs.engine = 'dead';
+    this.player.status = 'flying';
+    this.player.landing = { bounces: 0, result: null, contacts: [], field: null, at: null };
+    this.app.input.throttle = 0;
+  }
+
+  protected applyDebugDamage(kind: string): void {
+    const d = this.player.damage;
+    switch (kind) {
+      case 'GLYCOL': d.glycol = 0.7; break;
+      case 'OIL': d.oil = 0.6; break;
+      case 'FIRE': d.fire = 0.05; break;
+      case 'AILERON': d.aileron = 0.6; d.aileronBias = 0.15; break;
+      case 'ELEVATOR': d.elevator = 0.5; d.elevatorBias = 0.25; break;
+      case 'RUDDER': d.rudder = 0.6; d.rudderBias = 0.06; break;
+      case 'GEAR ONE': d.gear = 'one'; break;
+      case 'GEAR NONE': d.gear = 'none'; break;
+      case 'FLAPS': d.flaps = false; break;
+      case 'WOUND': d.pilot = 'wounded'; break;
+      case 'SEIZE': this.player.fs.engine = 'seized'; break;
+    }
+    this.flashMessage(`DEBUG: ${kind}`, 1.5);
+  }
+
+  /** Per-frame world events: messages, haptics, kill calls. */
+  protected consumeEvents(): void {
+    const w = this.world;
+    const me = this.player;
+    for (const e of w.events) this.onWorldEvent(e, me);
+    w.events.length = 0;
+  }
+
+  protected onWorldEvent(e: import('../sim/world').WorldEvent, me: Plane): void {
+    const w = this.world;
+    switch (e.kind) {
+      case 'playerHit':
+        haptics.pulse(40);
+        this.hitFlash = 0.15;
+        this.app.sound(this.fxRng.chance(0.6) ? 'clang' : 'thud', 0.9, 0.85 + this.fxRng.next() * 0.4);
+        break;
+      case 'hit':
+        // Our rounds striking home: a faint thud.
+        if (e.otherId === me.id) this.app.sound('thud', 0.35, 1.3);
+        break;
+      case 'explode': {
+        const p = e.pos ?? w.planeById(e.planeId)?.pos;
+        const d = p ? p.distTo(me.pos) : 5000;
+        if (d < 4000) this.app.sound('explode', Math.min(1, 300 / Math.max(100, d)), 0.8 + this.fxRng.next() * 0.3);
+        break;
+      }
+      case 'engineCough':
+        if (e.planeId === me.id) this.app.sound('cough', 0.9);
+        break;
+      case 'shotDown':
+        if (e.otherId === me.id) {
+          const v = w.planeById(e.planeId);
+          this.flashMessage(v ? `${v.type.short.toUpperCase()} GOING DOWN!` : 'HE\'S GOING DOWN!', 3);
+        } else if (e.planeId === me.id) this.flashMessage('YOU\'VE HAD IT - GET OUT!', 4);
+        break;
+      case 'fire':
+        if (e.planeId === me.id) { this.flashMessage('FIRE! BAIL OUT!', 4); haptics.pulse([80, 40, 80]); }
+        break;
+      case 'glycol':
+        if (e.planeId === me.id) this.flashMessage('GLYCOL LEAK - WATCH THE TEMPERATURE', 3);
+        break;
+      case 'oil':
+        if (e.planeId === me.id) this.flashMessage('OIL ON THE WINDSCREEN', 3);
+        break;
+      case 'pilotWounded':
+        if (e.planeId === me.id) { this.flashMessage('YOU\'RE HIT - WOUNDED', 3); this.woundFlash = 1; }
+        break;
+      case 'wingOff':
+        if (e.otherId === me.id) this.flashMessage('HIS WING\'S COME OFF!', 3);
+        break;
+      case 'bail':
+        if (e.planeId !== me.id && w.planeById(e.planeId)?.side !== me.side) this.flashMessage('HE\'S BALED OUT', 2);
+        break;
+      case 'bounce':
+        if (e.planeId === me.id) { this.flashMessage('BOUNCED!', 1.5); haptics.pulse(60); this.app.sound('thump', 1); }
+        break;
+      case 'touchdown':
+        if (e.planeId === me.id) { haptics.pulse(30); this.app.sound('thump', 0.6); this.lastTouch = me.landing.contacts[me.landing.contacts.length - 1] ?? null; }
+        break;
+      case 'groundLoop':
+        if (e.planeId === me.id) this.flashMessage('GROUND LOOP!', 2.5);
+        break;
+      case 'noseOver':
+        if (e.planeId === me.id) this.flashMessage('ON HER NOSE!', 2.5);
+        break;
+      case 'obstacle':
+        if (e.planeId === me.id) { this.flashMessage(me.landing.result?.reason.toUpperCase() ?? 'CRUNCH', 3); haptics.pulse([80, 40, 120]); }
+        break;
+      case 'landed':
+        if (e.planeId === me.id) this.flashMessage(`DOWN: ${me.landing.result?.reason.toUpperCase() ?? ''}`, 6);
+        break;
+      case 'ditched':
+        if (e.planeId === me.id) this.flashMessage('DITCHED - GET OUT!', 6);
+        break;
+      case 'crash':
+        if (e.planeId === me.id) { this.flashMessage('CRASHED', 6); this.app.sound('explode', 1, 0.7); }
+        break;
+      case 'liftoff':
+        if (e.planeId === me.id) this.lastTouch = null;
+        break;
+    }
+  }
+
+  protected lastTouch: Plane['landing']['contacts'][number] | null = null;
+  protected showTouch = false;
+  protected fields: FieldCandidate[] = [];
+  protected fieldsAt = -10;
+  protected debugAf = 0;
+  protected debugDmg = 0;
+  protected hitFlash = 0;
+  protected woundFlash = 0;
+
+  /** Commands queued for the next tick (recorded for replays). */
+  protected pendingCmds: SimCmd[] = [];
+
+  protected cmd(c: SimCmd): void {
+    this.pendingCmds.push(c);
+  }
+
+  protected gearAction(): void {
+    const fs = this.player.fs;
+    if (fs.type.gear === 'fixed' || fs.onGround) return;
+    if (fs.type.gear === 'pump' && fs.gearCmd > 0.5) this.flashMessage('PUMP THE GEAR UP (HOLD GEAR)', 2);
+    this.cmd('gear');
+  }
+
+  protected cycleView(): void {
+    const order: ViewMode[] = ['cockpit', 'padlock', 'chase', 'flyby', 'combat'];
+    this.view = order[(order.indexOf(this.view) + 1) % order.length];
+    if (this.view === 'flyby') this.placeFlyby();
+  }
+
+  protected togglePadlock(): void {
+    if (this.view === 'padlock') { this.view = 'cockpit'; return; }
+    const t = this.nearestEnemy();
+    if (t) { this.padlockId = t.id; this.view = 'padlock'; }
+    else this.flashMessage('NOTHING TO PADLOCK');
+  }
+
+  protected nearestEnemy(): Plane | null {
+    const p = this.player;
+    let best: Plane | null = null, bd = Infinity;
+    for (const q of this.world.planes) {
+      if (q === p || !q.alive || q.side === p.side) continue;
+      const d = q.pos.distTo(p.pos);
+      if (d < bd && d < 12000) { bd = d; best = q; }
+    }
+    return best;
+  }
+
+  flashMessage(m: string, secs = 2.5): void {
+    this.message = m;
+    this.messageT = secs;
+  }
+
+  protected pauseMenu(): void {
+    const s = this.app.input;
+    const items = this.pauseItems();
+    if (s.consume('up')) this.pauseSel = (this.pauseSel + items.length - 1) % items.length;
+    if (s.consume('down')) this.pauseSel = (this.pauseSel + 1) % items.length;
+    let pick = -1;
+    if (s.consume('ok')) pick = this.pauseSel;
+    for (const t of s.taps) {
+      const i = Math.floor((t.y - 66) / 13);
+      if (i >= 0 && i < items.length && t.x > 80 && t.x < 240) pick = i;
+    }
+    if (pick >= 0) items[pick].act();
+  }
+
+  protected pauseItems(): { label: string; act: () => void }[] {
+    const st = this.app.settings;
+    return [
+      { label: 'RESUME', act: () => { this.paused = false; this.touchMode = 'flight'; this.app.touch.setMode('flight'); } },
+      { label: `AUTO-RUDDER ${st.autoRudder ? 'ON' : 'OFF'}`, act: () => { st.autoRudder = !st.autoRudder; this.world.autoRudder = st.autoRudder; this.app.saveSettings(); } },
+      { label: `STALL GUARD ${st.stallGuard ? 'ON' : 'OFF'}`, act: () => { st.stallGuard = !st.stallGuard; this.world.stallGuard = st.stallGuard; this.app.saveSettings(); } },
+      { label: `BIG TARGETS ${st.bigTargets ? 'ON' : 'OFF'}`, act: () => { st.bigTargets = !st.bigTargets; this.world.bigTargets = st.bigTargets; this.app.saveSettings(); } },
+      { label: `COMPASS ${st.compass ? 'ON' : 'OFF'}`, act: () => { st.compass = !st.compass; this.app.saveSettings(); } },
+      { label: `TILT ${st.tilt ? 'ON' : 'OFF'}`, act: () => { void this.toggleTilt(); } },
+      { label: 'CALIBRATE TILT', act: () => this.app.tilt.calibrate() },
+      { label: `PANEL ${st.slimPanel ? 'SLIM' : 'FULL'}`, act: () => { st.slimPanel = !st.slimPanel; this.L = cockpitLayout(st.slimPanel); this.app.saveSettings(); } },
+      { label: 'QUIT FLIGHT', act: () => this.opts.onExit() },
+    ];
+  }
+
+  protected async toggleTilt(): Promise<void> {
+    const st = this.app.settings;
+    if (st.tilt) { this.app.tilt.disable(); st.tilt = false; }
+    else st.tilt = await this.app.tilt.enable();
+    this.app.saveSettings();
+  }
+
+  ticksPerStep(): number {
+    return this.paused ? 0 : TUNING.sim.timeCompression[this.timeIdx];
+  }
+
+  /** Controls for this tick, from the live input. */
+  protected controlFrame(): ControlFrame {
+    const s = this.app.input;
+    const f = quantiseControls(s);
+    f.boost = this.boostToggle;
+    if (this.pendingCmds.length) { f.cmds = this.pendingCmds; this.pendingCmds = []; }
+    return f;
+  }
+
+  tick(): void {
+    if (this.paused) return;
+    const f = this.controlFrame();
+    this.recording.push(f);
+    this.stepSim(f);
+    this.afterTick();
+    // Rolling out after a landing: say how to finish.
+    const fs = this.player.fs;
+    if (!this.switchOffHint && this.canSwitchOff() && Math.hypot(fs.vel.x, fs.vel.z) < 25) {
+      this.switchOffHint = true;
+      this.flashMessage('ENGINE OFF TO FINISH', 3);
+    }
+    if (!this.player.fs.onGround) this.switchOffHint = false;
+    if (this.messageT > 0) this.messageT -= TUNING.sim.dt;
+    if (this.hitFlash > 0) this.hitFlash -= TUNING.sim.dt;
+    if (this.woundFlash > 0) this.woundFlash -= TUNING.sim.dt * 0.7;
+  }
+
+  /** Advance the simulation one tick (a sortie wraps the world). */
+  protected stepSim(f: ControlFrame): void {
+    this.world.step(f);
+  }
+
+  /** Hook for subclasses / later systems. */
+  protected afterTick(): void {
+    const fs = this.player.fs;
+    if (fs.events.length) {
+      for (const e of fs.events) this.onFlightEvent(e);
+      fs.events.length = 0;
+    }
+  }
+
+  protected onFlightEvent(e: string): void {
+    if (e === 'stall') this.flashMessage('STALL', 1.2);
+    if (e === 'spin') this.flashMessage('SPINNING!', 2);
+    if (e === 'cutout') this.flashMessage('ENGINE CUT-OUT', 1.2);
+    if (e === 'fuelOut') this.flashMessage('OUT OF FUEL', 3);
+    if (e === 'seize') this.flashMessage('ENGINE SEIZED', 3);
+  }
+
+  // ------------------------------------------------------------ cameras
+
+  /** The aircraft the external cameras follow (the player unless a replay picks another). */
+  subjectId = -1;
+  private combatDir = new Vec3(0, 0, 1);
+
+  protected subject(): Plane {
+    if (this.subjectId < 0) return this.player;
+    return this.world.planes.find((q) => q.id === this.subjectId) ?? this.player;
+  }
+
+  protected nearestOpponent(of: Plane): Plane | null {
+    let best: Plane | null = null, bd = 6000;
+    for (const q of this.world.planes) {
+      if (q.side === of.side || q.status !== 'flying') continue;
+      const d = q.pos.distTo(of.pos);
+      if (d < bd) { bd = d; best = q; }
+    }
+    return best;
+  }
+
+  protected placeFlyby(): void {
+    const p = this.subject().fs;
+    const f = p.forward();
+    this.flybyPos.copy(p.pos).addScaled(f, 220).addScaled(p.right(), 25);
+    this.flybyPos.y += 8;
+  }
+
+  protected setupCamera(): { headTurned: boolean } {
+    const p = this.player;
+    const fs = p.fs;
+    const cam = this.cam;
+    const L = this.L;
+    const s = this.app.input;
+    let headTurned = false;
+    const chute = this.playerChute();
+    if (chute) {
+      cam.setViewport(0, 0, 320, 256, TUNING.render.fovDeg);
+      const at = chute.pos.clone().add(new Vec3(14, 6, -10));
+      cam.pos.copy(at);
+      cam.setOrientation(Quat.lookRotation(chute.pos.clone().add(new Vec3(0, 3, 0)).sub(at)));
+      return { headTurned: true };
+    }
+    if (this.view === 'cockpit' || this.view === 'padlock') {
+      cam.setViewport(0, 0, 320, s.lookBack || this.view === 'padlock' ? 256 : L.panelTop, TUNING.render.fovDeg, s.lookBack || this.view === 'padlock' ? 128 : L.viewCy);
+      const eye = fs.q.rotate(new Vec3(0, 0.75, -0.3));
+      cam.pos.copy(fs.pos).add(eye);
+      let q = fs.q;
+      if (s.lookBack) {
+        q = fs.q.mul(Quat.fromEuler(this.lookSide * 155 * DEG, 8 * DEG, 0));
+        headTurned = true;
+      } else if (this.view === 'padlock') {
+        const t = this.world.planes.find((x) => x.id === this.padlockId && x.alive);
+        if (!t) { this.view = 'cockpit'; }
+        else {
+          const local = fs.q.unrotate(t.pos.clone().sub(cam.pos));
+          let yaw = Math.atan2(local.x, local.z);
+          let pitch = Math.atan2(local.y, Math.hypot(local.x, local.z));
+          yaw = clamp(yaw, -170 * DEG, 170 * DEG);
+          pitch = clamp(pitch, -25 * DEG, 88 * DEG);
+          q = fs.q.mul(Quat.fromEuler(yaw, pitch, 0));
+          headTurned = Math.abs(yaw) > 25 * DEG || Math.abs(pitch) > 20 * DEG;
+        }
+      }
+      cam.setOrientation(q);
+      // Stall buffet: shake the view.
+      if (fs.buffet > 0.1 && !fs.onGround) {
+        const k = TUNING.effects.stallBuffetShakePx * fs.buffet;
+        cam.cx += Math.round(this.fxRng.signed() * k);
+        cam.cy += Math.round(this.fxRng.signed() * k);
+      }
+    } else if (this.view === 'chase') {
+      const sf = this.subject().fs;
+      cam.setViewport(0, 0, 320, 256, TUNING.render.fovDeg);
+      this.chaseQ = Quat.slerp(this.chaseQ, sf.q, 0.12);
+      const back = this.chaseQ.rotate(new Vec3(0, 3.5, -22));
+      cam.pos.copy(sf.pos).add(back);
+      cam.setOrientation(Quat.lookRotation(sf.pos.clone().sub(cam.pos), this.chaseQ.rotate(new Vec3(0, 1, 0))));
+    } else if (this.view === 'combat') {
+      // Over the subject's shoulder towards its nearest opponent.
+      const sub = this.subject();
+      const t = this.nearestOpponent(sub);
+      const want = t ? t.pos.clone().sub(sub.pos).normalize() : sub.fs.forward();
+      this.combatDir.lerp(want, 0.08).normalize();
+      cam.setViewport(0, 0, 320, 256, TUNING.render.fovDeg);
+      cam.pos.copy(sub.pos).addScaled(this.combatDir, -32);
+      cam.pos.y += 7;
+      cam.setOrientation(Quat.lookRotation(sub.pos.clone().addScaled(this.combatDir, 60).sub(cam.pos)));
+    } else {
+      const sf = this.subject().fs;
+      cam.setViewport(0, 0, 320, 256, 40);
+      if (this.flybyPos.distTo(sf.pos) > 600) this.placeFlyby();
+      cam.pos.copy(this.flybyPos);
+      cam.setOrientation(Quat.lookRotation(sf.pos.clone().sub(cam.pos)));
+    }
+    return { headTurned };
+  }
+
+  // ------------------------------------------------------------ render
+
+  render(fb: FrameBuffer): void {
+    const t0 = performance.now();
+    rasterStats.polys = 0;
+    this.scene.lodBias = this.app.settings.retro ? 1 : 0;
+    const { headTurned } = this.setupCamera();
+    const p = this.player;
+    const inside = (this.view === 'cockpit' || this.view === 'padlock') && !this.playerChute();
+    this.scene.draw(fb, this.cam, this.world, { skipPlaneId: inside ? p.id : undefined, copper: this.app.display.copper });
+    const s = this.app.input;
+    if (inside && !headTurned && !s.lookBack) {
+      this.drawMirror(fb);
+      drawOilScreen(fb, this.L, this.oilAmount(), this.world.tick >> 2);
+      drawCanopyFrame(fb, this.L, p.type.id);
+      this.drawSight(fb);
+      drawPanel(fb, this.L, this.panelData(), this.app.settings.slimPanel);
+      if (this.app.settings.bigReadouts) this.drawReadouts(fb, this.L.panelTop - 19);
+      if (this.app.settings.compass) this.drawCompass(fb, this.player);
+    } else if (inside && s.lookBack) {
+      drawRearFrame(fb, this.lookSide);
+    } else if (this.view === 'padlock' && inside) {
+      this.drawPadlockIndicator(fb);
+    }
+    if (inside && !s.lookBack && !headTurned) this.drawAssist(fb);
+    this.drawHud(fb);
+    if (this.messageT > 0) viewMessage(fb, this.message, 40, C.WHITE);
+    if (this.timeIdx > 0) drawText(fb, `TIME x${TUNING.sim.timeCompression[this.timeIdx]}`, 250, 22, C.SIGHT, 'tiny');
+    if (this.paused) this.drawPause(fb);
+    this.frameMs = this.frameMs * 0.9 + (performance.now() - t0) * 0.1;
+    if (this.debug) this.drawDebug(fb);
+    if (this.showTouch && this.lastTouch) {
+      const t = this.lastTouch;
+      const txt = `SINK ${t.sink.toFixed(1)}M/S SPD ${(t.speed * MPS_TO_MPH).toFixed(0)}MPH BANK ${(t.bank / DEG).toFixed(0)} PITCH ${(t.pitch / DEG).toFixed(0)} DRIFT ${(t.drift / DEG).toFixed(0)} ${t.surface.toUpperCase()} ${t.kind.toUpperCase()}`;
+      fillRect(fb, 0, 160, txt.length * 4 + 2, 7, C.BLACK);
+      drawText(fb, txt, 1, 161, C.SIGHT, 'tiny');
+    }
+  }
+
+  protected oilAmount(): number {
+    const p = this.player;
+    return p.type.engines === 1 ? Math.min(1, p.damage.oil * 1.2) : 0;
+  }
+
+  /** Assist: suitable fields within glide range, and the approach indicator. */
+  protected drawLandingAids(fb: FrameBuffer): void {
+    const me = this.player, fs = me.fs;
+    if (fs.onGround || me.status !== 'flying') return;
+    const engineOut = fs.engine !== 'running';
+    const approaching = fs.gear > 0.5 && fs.agl < 700 && fs.vel.y < 1;
+    if (!engineOut && !approaching && !(me.damage.fire > 0)) { this.fields = []; return; }
+    const now = this.world.time;
+    if (now - this.fieldsAt > 0.6) {
+      this.fieldsAt = now;
+      this.fields = findFields(this.world.ground, me, this.world.weather.wind);
+    }
+    drawFieldHighlights(fb, this.cam, this.world.ground, this.fields);
+    // Approach indicator for the field most nearly ahead.
+    let best: FieldCandidate | null = null, bs = Infinity;
+    for (const f of this.fields) {
+      const dx = f.touchdown.x - fs.pos.x, dz = f.touchdown.z - fs.pos.z;
+      const off = Math.abs(Math.atan2(Math.sin(Math.atan2(dx, dz) - fs.heading), Math.cos(Math.atan2(dx, dz) - fs.heading)));
+      const sc = off * 3000 + Math.hypot(dx, dz);
+      if (off < 0.8 && sc < bs) { bs = sc; best = f; }
+    }
+    if (best && fs.agl < 900) drawApproachIndicator(fb, 300, 40, approachState(me, best.touchdown, engineOut));
+  }
+
+  /** Assist mode: lead indicator on the nearest target and small markers on enemies in range. */
+  protected drawAssist(fb: FrameBuffer): void {
+    const me = this.player;
+    const cam = this.cam;
+    fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);
+    if (this.app.settings.markers) drawSpotting(fb, cam, this.world, me, this.opts.terrain instanceof WorldMap ? this.opts.terrain : null);
+    const h = this.homing();
+    if (h && !me.fs.onGround) drawHoming(fb, cam, me, h);
+    fb.resetClip();
+    if (!this.app.settings.assist) return;
+    fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);
+    const out = { x: 0, y: 0, z: 0 };
+    let nearest: Plane | null = null, nd = Infinity;
+    for (const q of this.world.planes) {
+      if (q === me || !q.alive || q.side === me.side) continue;
+      const d = q.pos.distTo(me.pos);
+      if (d < nd) { nd = d; nearest = q; }
+    }
+    this.drawLandingAids(fb);
+    fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);
+    if (nearest && nd < 900) {
+      const muzzle = me.armament.guns[0]?.type.muzzle ?? 745;
+      // The guns fire from the wings but converge on the sight line: aim the sight at the lead point.
+      const lp = leadPoint(cam.pos, me.fs.vel, nearest.pos, nearest.fs.vel, muzzle);
+      if (cam.project(lp, out)) {
+        line(fb, out.x - 3, out.y, out.x + 3, out.y, C.SIGHT);
+        line(fb, out.x, out.y - 3, out.x, out.y + 3, C.SIGHT);
+        pset(fb, out.x, out.y, C.WHITE);
+      }
+    }
+    fb.resetClip();
+  }
+
+  protected drawSight(fb: FrameBuffer): void {
+    const st = this.app.settings;
+    drawGunsight(fb, this.cam.cx, this.cam.cy, this.cam.f, st.sightSpanFt * 0.3048, st.convergenceYards * 0.9144);
+  }
+
+  protected drawMirror(fb: FrameBuffer): void {
+    const m = this.L.mirror;
+    const fs = this.player.fs;
+    const mc = this.mirrorCam;
+    mc.setViewport(m.x0, m.y0, m.x1, m.y1, 34);
+    mc.mirror = true;
+    mc.pos.copy(fs.pos).add(fs.q.rotate(new Vec3(0, 1.1, 0.4)));
+    mc.setOrientation(fs.q.mul(Quat.fromEuler(Math.PI, 4 * DEG, 0)));
+    this.scene.draw(fb, mc, this.world, { skipPlaneId: this.player.id, lowDetail: true, sun: false, coarse: true });
+  }
+
+  protected drawPadlockIndicator(fb: FrameBuffer): void {
+    // Where is the nose? A small arrow at the screen edge plus an attitude glyph.
+    const fs = this.player.fs;
+    const nose = fs.pos.clone().addScaled(fs.forward(), 1000);
+    const t = [0, 0, 0];
+    this.cam.toCam(nose.x, nose.y, nose.z, t);
+    let x = 160, y = 128;
+    if (t[2] > 1) { x = this.cam.projX(t[0], t[2]); y = this.cam.projY(t[1], t[2]); }
+    else { x = 160 + t[0] * 1000; y = 128 - t[1] * 1000; }
+    const dx = x - 160, dy = y - 128;
+    const k = Math.min(1, 110 / Math.max(1, Math.abs(dx)), 100 / Math.max(1, Math.abs(dy)));
+    const ex = 160 + dx * k, ey = 128 + dy * k;
+    fillRect(fb, ex - 2, ey - 2, 5, 5, C.SIGHT);
+    drawText(fb, 'NOSE', ex - 7, ey + 4, C.SIGHT, 'tiny');
+    // Mini attitude: horizon bar.
+    const r = fs.roll;
+    for (let i = -8; i <= 8; i++) {
+      const px = 296 + Math.cos(r) * i, py = 236 + Math.sin(r) * i + clamp(fs.pitch * 20, -10, 10);
+      fillRect(fb, px, py, 1, 1, C.WHITE);
+    }
+    drawText(fb, `${Math.round(fs.ias * MPS_TO_MPH)}`, 4, 244, C.WHITE, 'tiny');
+    drawText(fb, `${Math.round((fs.pos.y * M_TO_FT) / 100) * 100}FT`, 30, 244, C.WHITE, 'tiny');
+  }
+
+  protected panelData() {
+    const fs = this.player.fs;
+    return {
+      fs,
+      turnRate: (fs.r * Math.cos(fs.roll) + fs.qr * Math.sin(fs.roll)) * 57.3,
+      gearDownLegs: fs.gearLegsDown,
+      gearMoving: fs.gear > 0.02 && fs.gear < 0.98,
+      flaps: fs.flaps,
+      boostOn: fs.boostOn,
+      fuelGallons: fs.fuel / GALLON_KG,
+      fuelCapGallons: fs.type.fuelCapacity / GALLON_KG,
+      ammoFrac: this.app.settings.ammoBar && this.app.settings.assist ? this.player.armament.frac : undefined,
+      pumpProgress: fs.type.gear === 'pump' && fs.gearCmd < 0.5 && fs.gear > 0 ? 1 - fs.gear : undefined,
+      // The 109's red lamp: about ten minutes' fuel left.
+      redLamp: fs.type.id === 'bf109' ? fs.fuel < fs.type.fuelCapacity * TUNING.escort.redLight && (fs.fuel > fs.type.fuelCapacity * 0.08 || Math.floor(this.world.time * 2) % 2 === 0) : undefined,
+    };
+  }
+
+  protected drawHud(fb: FrameBuffer): void {
+    if (this.view === 'chase' || this.view === 'flyby' || this.view === 'combat') {
+      const sub = this.subject();
+      const fs = sub.fs;
+      if (sub === this.player && this.app.settings.compass) this.drawCompass(fb, sub);
+      if (sub === this.player && this.app.settings.bigReadouts) { this.drawReadouts(fb, 236); return; }
+      drawText(fb, `${sub === this.player ? '' : `${sub.type.short} ${sub.callsign}  `}${Math.round(fs.ias * MPS_TO_MPH)} MPH  ${Math.round(fs.pos.y * M_TO_FT)} FT`, 4, 4, C.WHITE, 'tiny');
+    }
+  }
+
+  /**
+   * Large airspeed and height in the corners, readable on a phone: the dials
+   * are authentic but too small at 320x256. Airspeed turns red near the
+   * stall; the climb or sink rate sits under the height.
+   */
+  protected drawReadouts(fb: FrameBuffer, y: number): void {
+    const fs = this.player.fs;
+    const mph = Math.round(fs.ias * MPS_TO_MPH);
+    const ft = Math.round((fs.pos.y * M_TO_FT) / 10) * 10;
+    const vsi = Math.round((fs.vel.y * M_TO_FT * 60) / 100) * 100;
+    const stallIas = stallSpeed(fs.type, fs.mass, 1.225) * MPS_TO_MPH;
+    const slow = !fs.onGround && mph < stallIas * 1.15;
+    const col = slow ? C.FIRE_R : C.SIGHT;
+    drawTextScaled(fb, String(mph), 4, y, col, 2, C.BLACK);
+    drawText(fb, slow ? 'MPH  SLOW!' : 'MPH', 4 + scaledWidth(String(mph), 2) + 3, y + 7, col, 'tiny', C.BLACK);
+    const alt = ft.toLocaleString('en-GB');
+    const w = scaledWidth(alt, 2);
+    drawTextScaled(fb, alt, 300 - w, y, C.SIGHT, 2, C.BLACK);
+    drawText(fb, 'FT', 303, y + 7, C.SIGHT, 'tiny', C.BLACK);
+    const climb = `${vsi > 0 ? '+' : ''}${vsi.toLocaleString('en-GB')}/MIN`;
+    drawText(fb, climb, 316 - textWidth(climb, 'tiny'), y - 7, vsi < -2000 ? C.FIRE_Y : C.CHALK, 'tiny', C.BLACK);
+  }
+
+  /** The course to steer, shown on the compass strip (a homing, or the controller's vector). */
+  protected steerHeading(): number | null {
+    const h = this.homing();
+    if (!h) return null;
+    const p = this.player.pos;
+    return Math.atan2(h.field.pos.x - p.x, h.field.pos.z - p.z);
+  }
+
+  /**
+   * A heading strip across the top of the view: one pixel per degree, ticks
+   * every 5, numbers every 30, the heading in a box over the centre, and a
+   * marker for the course to steer. Not period, but easy to fly a vector by.
+   */
+  protected drawCompass(fb: FrameBuffer, sub: Plane): void {
+    const half = 60, cx = 160, y = 20;
+    const hdg = ((sub.fs.heading * 180) / Math.PI + 360) % 360;
+    fillRect(fb, cx - half - 1, y, half * 2 + 3, 13, C.BLACK);
+    fb.setClip(cx - half, y, cx + half + 1, y + 13);
+    const NAMES: Record<number, string> = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
+    for (let d = Math.ceil((hdg - half) / 5) * 5; d <= hdg + half; d += 5) {
+      const x = Math.round(cx + (d - hdg));
+      const dd = ((d % 360) + 360) % 360;
+      const big = dd % 10 === 0;
+      fillRect(fb, x, y + 13 - (big ? 4 : 2), 1, big ? 4 : 2, big ? C.WHITE : C.GREY_L);
+      if (dd % 30 === 0) {
+        const t = NAMES[dd] ?? String(dd / 10).padStart(2, '0');
+        drawText(fb, t, x - (textWidth(t, 'tiny') >> 1), y + 2, NAMES[dd] ? C.SIGHT : C.CHALK, 'tiny');
+      }
+    }
+    // Course to steer: a caret on the strip, or pinned to the end it's off.
+    const steer = this.steerHeading();
+    if (steer !== null) {
+      let rel = ((steer * 180) / Math.PI - hdg + 540) % 360 - 180;
+      const off = Math.abs(rel) > half - 2;
+      rel = Math.max(-(half - 2), Math.min(half - 2, rel));
+      const x = Math.round(cx + rel);
+      fillConvex(fb, [x - 3, x + 3, x], [y + 13, y + 13, y + 8], 3, off ? C.FIRE_Y : C.RAF_GREEN_L);
+    }
+    fb.resetClip();
+    rectOutline(fb, cx - half - 1, y, half * 2 + 3, 13, C.GREY_D);
+    // The heading itself, boxed over the centre line.
+    const t = String(Math.round(hdg) % 360).padStart(3, '0');
+    fillRect(fb, cx - 8, y + 12, 17, 9, C.BLACK);
+    rectOutline(fb, cx - 8, y + 12, 17, 9, C.SIGHT);
+    drawText(fb, t, cx - 5, y + 14, C.WHITE, 'tiny');
+    fillRect(fb, cx, y + 8, 1, 4, C.SIGHT);
+  }
+
+  protected drawPause(fb: FrameBuffer): void {
+    fillRect(fb, 70, 44, 180, 34 + this.pauseItems().length * 13, C.BLACK);
+    drawText(fb, 'PAUSED', 139, 50, C.SIGHT);
+    this.pauseItems().forEach((it, i) => {
+      drawText(fb, (i === this.pauseSel ? '> ' : '  ') + it.label, 84, 68 + i * 13, i === this.pauseSel ? C.WHITE : C.GREY_L);
+    });
+  }
+
+  protected drawDebug(fb: FrameBuffer): void {
+    const fs = this.player.fs;
+    const lines = [
+      `FPS ${this.app.loop.fps.toFixed(1)} ${this.frameMs.toFixed(1)}MS POLY ${rasterStats.polys} OBJ ${this.scene.r3d.stats.objects} CELLS ${this.scene.terrain.stats.cells}`,
+      `IAS ${(fs.ias * MPS_TO_MPH).toFixed(0)} TAS ${(fs.tas * MPS_TO_MPH).toFixed(0)} ALT ${(fs.pos.y * M_TO_FT).toFixed(0)} AGL ${(fs.agl * M_TO_FT).toFixed(0)}`,
+      `G ${fs.nz.toFixed(2)} AOA ${(fs.alpha / DEG).toFixed(1)} BETA ${(fs.beta / DEG).toFixed(1)} E ${((fs.tas * fs.tas) / 2 / 9.81 + fs.pos.y).toFixed(0)}M`,
+      `THR ${fs.throttle.toFixed(2)} RPM ${fs.rpm.toFixed(0)} RAD ${fs.radTemp.toFixed(0)} FUEL ${fs.fuel.toFixed(0)}KG ${fs.engine.toUpperCase()}`,
+      `GREY ${this.player.pilot.grey.toFixed(2)} BLK ${this.player.pilot.black.toFixed(2)} SPIN ${fs.spin.toFixed(2)} TICK ${this.world.tick}`,
+    ];
+    const d = this.player.damage;
+    lines.push(`DMG ${(damageFraction(d) * 100).toFixed(0)}% GLY ${d.glycol.toFixed(2)} OIL ${d.oil.toFixed(2)} FIRE ${d.fire.toFixed(2)} PILOT ${d.pilot} AMMO ${(this.player.armament.frac * 100).toFixed(0)}%`);
+    const hp = Object.entries(d.hp).map(([k, v]) => `${k.slice(0, 4)}${Math.max(0, Math.round(v ?? 0))}`).join(' ');
+    lines.push(hp.slice(0, 78));
+    lines.forEach((l, i) => {
+      fillRect(fb, 0, 24 + i * 7, l.length * 4 + 2, 7, C.BLACK);
+      drawText(fb, l, 1, 25 + i * 7, C.WHITE, 'tiny');
+    });
+    this.debugItems().forEach((it, i) => {
+      fillRect(fb, 252, 64 + i * 9, 66, 8, C.BLACK);
+      rectOutline(fb, 252, 64 + i * 9, 66, 8, i === this.debugSel ? C.WHITE : C.GREY_D);
+      drawText(fb, it.label, 254, 65 + i * 9, C.SIGHT, 'tiny');
+    });
+    // AI state above each aircraft.
+    const out = { x: 0, y: 0, z: 0 };
+    for (const q of this.world.planes) {
+      if (q === this.player || !q.airborneObject) continue;
+      if (!this.cam.project(q.pos, out)) continue;
+      const lab = `${q.type.short} ${q.brain ? q.brain.label() : q.status} ${Math.round(q.pos.distTo(this.player.pos))}M`;
+      drawText(fb, lab.toUpperCase(), out.x - lab.length * 2, out.y - 12, q.side === 'raf' ? C.SKY_L : C.FIRE_Y, 'tiny');
+    }
+  }
+
+  protected whiteout = 0;
+
+  /** Sun dazzle: looking into the sun washes the screen out. */
+  protected dazzleAmount(): number {
+    const sun = this.world.sun;
+    if (sun.y < 0.02 || this.whiteout > 0.3) return 0;
+    const f = this.cam.forward();
+    const ang = Math.acos(Math.max(-1, Math.min(1, f.dot(sun))));
+    const cone = (TUNING.effects.sunDazzleConeDeg * Math.PI) / 180 * 1.6;
+    if (ang > cone) return 0;
+    const k = 1 - ang / cone;
+    return k * k * 0.85 * (this.world.losClear(this.cam.pos, this.cam.pos.clone().addScaled(sun, 3000)) ? 1 : 0.2);
+  }
+
+  effects(): ScreenEffects {
+    const fx = noEffects();
+    const pil = this.player.pilot;
+    const dens = this.world.cloudDensityAt(this.cam.pos);
+    this.whiteout += (dens - this.whiteout) * Math.min(1, TUNING.effects.cloudFadeRate / 50);
+    fx.white = this.whiteout * 0.92;
+    fx.dazzle = this.dazzleAmount();
+    fx.grey = pil.grey;
+    fx.black = pil.black;
+    fx.red = pil.red * 0.8;
+    if (this.hitFlash > 0) fx.red = Math.max(fx.red, 0.35);
+    if (this.player.damage.pilot === 'wounded') fx.woundEdge = 0.35 + 0.35 * Math.abs(Math.sin(this.world.time * 5));
+    if (this.woundFlash > 0) fx.red = Math.max(fx.red, this.woundFlash * 0.7);
+    return fx;
+  }
+
+  viewCentreY(): number {
+    return this.cam.cy;
+  }
+
+  contextButtons(): ContextButton[] {
+    if (this.paused) return [];
+    const fs = this.player.fs;
+    const b: ContextButton[] = [];
+    if (fs.type.gear !== 'fixed' && !fs.onGround) b.push({ action: 'gear', label: fs.gearCmd > 0.5 ? 'GEAR UP' : 'GEAR DN', hold: 'pump' });
+    if (fs.ias < 75) b.push({ action: 'flaps', label: fs.flapsCmd > 0.5 ? 'FLAPS UP' : 'FLAPS DN' });
+    b.push({ action: 'boost', label: 'BOOST', lit: this.boostToggle });
+    const p = this.player;
+    const inTrouble = p.status === 'wreck' || p.damage.fire > 0 || fs.engine !== 'running' || damageFraction(p.damage) > 0.15 || p.damage.pilot === 'wounded';
+    if (inTrouble && !fs.onGround && !this.playerChute() && fs.agl > 150) b.push({ action: 'bailOut', label: p.damage.fire > 0 ? `BAIL OUT ${Math.ceil(fireTimeLeft(p.damage))}` : 'BAIL OUT' });
+    if (this.canSwitchOff()) b.unshift({ action: 'engineOff', label: 'ENGINE OFF', lit: true });
+    b.push({ action: 'timeUp', label: `TIME x${TUNING.sim.timeCompression[this.timeIdx]}`, lit: this.timeIdx > 0 });
+    if (this.timeIdx > 0) b.push({ action: 'timeDown', label: 'TIME -' });
+    return b;
+  }
+
+  /** The field from the last R/T homing, if any (a sortie has the R/T). */
+  protected homing(): Homing | null {
+    return null;
+  }
+
+  /** Down after a landing with the engine still running. */
+  protected canSwitchOff(): boolean {
+    const p = this.player, fs = p.fs;
+    return fs.onGround && !!p.landing.result && p.status === 'flying' && (fs.engine === 'running' || fs.engine === 'coughing');
+  }
+}

@@ -16,6 +16,16 @@ export interface Settings {
   slimPanel: boolean;
   convergenceYards: number;
   sightSpanFt: number;
+  /** Enemy markers: formations far off, individual aircraft close in, an arrow to the nearest. */
+  markers: boolean;
+  /** Large airspeed and height readouts (the dials are too small on a phone). */
+  bigReadouts: boolean;
+  /** Full back stick holds the wing at the buffet instead of stalling it. */
+  stallGuard: boolean;
+  /** Enemy aircraft drawn (and hit) larger with distance: easier gunnery on a small screen. */
+  bigTargets: boolean;
+  /** Heading strip across the top of the view (not period, but easy to steer by). */
+  compass: boolean;
 }
 
 const KEY = 'scramble.settings.v1';
@@ -32,6 +42,11 @@ export const defaultSettings = (): Settings => ({
   slimPanel: false,
   convergenceYards: 300,
   sightSpanFt: 32,
+  markers: true,
+  bigReadouts: true,
+  stallGuard: true,
+  bigTargets: true,
+  compass: true,
 });
 
 export function loadSettings(): Settings {

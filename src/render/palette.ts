@@ -107,6 +107,7 @@ export const MAT = {
   rafSky: { ramp: [C.GREY_L, C.SKY_D, C.SKY_L] },
   lwUpper: { ramp: [C.LW_D, C.LW_M, C.LW_L] },
   lwUnder: { ramp: [C.LW_L, C.HAZE, C.LW_BLUE] },
+  lwBomber: { ramp: [C.FIELD_D, C.LW_D, C.LW_M] },
   black: { ramp: [C.BLACK, C.SMOKE, C.GREY_D] },
   white: { ramp: [C.GREY_L, C.CHALK, C.WHITE] },
   yellow: { ramp: [C.GOLD, C.FIRE_Y, C.FIRE_Y] },
@@ -120,16 +121,29 @@ export const MAT = {
   gold: { ramp: [C.RAF_EARTH_L, C.GOLD, C.STUBBLE] },
   stubble: { ramp: [C.GOLD, C.STUBBLE, C.CHALK] },
   plough: { ramp: [C.RAF_EARTH_D, C.RAF_EARTH, C.RAF_EARTH_L] },
-  sea: { ramp: [C.SEA_D, C.SEA, C.HAZE] },
+  // Sea stays sea through the near fog bands (a three-step ramp went to haze at the first).
+  sea: { ramp: [C.SEA_D, C.SEA, C.SEA] },
   chalk: { ramp: [C.GREY_L, C.CHALK, C.WHITE] },
   town: { ramp: [C.SMOKE, C.GREY_D, C.GREY_L] },
   roof: { ramp: [C.RAF_EARTH_D, C.RAF_EARTH, C.RED] },
   cloud: { ramp: [C.GREY_L, C.CHALK, C.WHITE] },
+  cloudBase: { ramp: [C.GREY_D, C.GREY_L, C.GREY_L] },
   fire: { ramp: [C.FIRE_R, C.FIRE_Y], unlit: true },
   smoke: { ramp: [C.SMOKE, C.GREY_D, C.GREY_L] },
   panel: { ramp: [C.PANEL], unlit: true, noFog: true },
   balloon: { ramp: [C.GREY_D, C.GREY_L, C.CHALK] },
   crosses: { ramp: [C.BLACK], unlit: true },
+  pasture: { ramp: [C.FIELD, C.FIELD_L, C.FIELD_L] },
+  downs: { ramp: [C.FIELD_L, C.FIELD_L, C.STUBBLE] },
+  marsh: { ramp: [C.FIELD_D, C.FIELD, C.SKY_D] },
+  city: { ramp: [C.SMOKE, C.GREY_D, C.GREY_D] },
+  river: { ramp: [C.SEA_D, C.SEA_D, C.SEA] },
+  mud: { ramp: [C.RAF_EARTH, C.RAF_EARTH_L, C.GREY_L] },
+  beach: { ramp: [C.GREY_L, C.STUBBLE, C.CHALK] },
+  airfield: { ramp: [C.FIELD, C.FIELD_L, C.FIELD_L] },
+  // Airfield markings seen from the air: the worn landing run and the perimeter track.
+  mown: { ramp: [C.FIELD_L, C.FIELD_L, C.STUBBLE] },
+  concrete: { ramp: [C.GREY_D, C.GREY_L, C.GREY_L] },
 } satisfies Record<string, Material>;
 
 export type MaterialName = keyof typeof MAT;
@@ -149,6 +163,8 @@ export function shadeIndex(mat: Material, light: number, fog: number): number {
   let step = mat.unlit ? n - 1 : Math.min(n - 1, Math.max(0, Math.floor(light * n)));
   if (mat.noFog || fog <= 0) return ramp[step];
   if (fog >= 3) return C.HAZE;
-  step += fog;
-  return step >= n ? C.HAZE : ramp[step];
+  // Each fog band steps one place up the ramp, stopping at its lightest
+  // entry; only the last band goes to haze. Patchwork survives into the
+  // distance, just paler.
+  return ramp[Math.min(n - 1, step + fog)];
 }

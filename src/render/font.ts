@@ -124,7 +124,7 @@ const TINY: Record<string, string> = {
   '-': '...|...|xxx|...|...', '.': '...|...|...|...|.x.', '/': '..x|..x|.x.|x..|x..',
   ':': '...|.x.|...|.x.|...', '+': '...|.x.|xxx|.x.|...', '%': 'x.x|..x|.x.|x..|x.x',
   ' ': '...|...|...|...|...', '<': '..x|.x.|x..|.x.|..x', '>': 'x..|.x.|..x|.x.|x..',
-  "'": '.x.|.x.|...|...|...', '!': '.x.|.x.|.x.|...|.x.', '?': 'xx.|..x|.x.|...|.x.',
+  "'": '.x.|.x.|...|...|...', ',': '...|...|...|.x.|x..', '!': '.x.|.x.|.x.|...|.x.', '?': 'xx.|..x|.x.|...|.x.',
   '(': '.x.|x..|x..|x..|.x.', ')': '.x.|..x|..x|..x|.x.', '=': '...|xxx|...|xxx|...',
 };
 
@@ -163,8 +163,14 @@ function plot(fb: FrameBuffer, x: number, y: number, c: number): void {
 }
 
 /** Draw text; returns the x after the last glyph. */
+/** Fold accented letters to plain ones the glyph set has (Wróblewski → Wroblewski). */
+export function foldText(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/Ł/g, 'L');
+}
+
 export function drawText(fb: FrameBuffer, s: string, x: number, y: number, c: number, font: FontName = 'topaz', shadow = -1): number {
   x = Math.round(x); y = Math.round(y);
+  s = foldText(s);
   if (shadow >= 0) drawText(fb, s, x + 1, y + 1, shadow, font);
   const adv = FONT_METRICS[font].advance;
   for (let i = 0; i < s.length; i++) {
@@ -212,4 +218,23 @@ export function wrapText(s: string, maxW: number, font: FontName = 'topaz'): str
     out.push(line);
   }
   return out;
+}
+
+/** Big text: the menu font scaled up by an integer factor (logos, headings). */
+export function drawTextScaled(fb: FrameBuffer, s: string, x: number, y: number, c: number, scale: number, shadow = -1): void {
+  s = foldText(s);
+  x = Math.round(x); y = Math.round(y);
+  if (shadow >= 0) drawTextScaled(fb, s, x + scale, y + scale, shadow, scale);
+  for (let i = 0; i < s.length; i++) {
+    const g = BIG.get(s[i]) ?? BIG.get('?')!;
+    const gx = x + i * 7 * scale;
+    for (let yy = 0; yy < g.h; yy++)
+      for (let xx = 0; xx < g.w; xx++)
+        if (g.bits[yy * g.w + xx])
+          for (let a = 0; a < scale * 2; a++) for (let b = 0; b < scale; b++) plot(fb, gx + xx * scale + a, y + yy * scale + b, c);
+  }
+}
+
+export function scaledWidth(s: string, scale: number): number {
+  return s.length * 7 * scale;
 }

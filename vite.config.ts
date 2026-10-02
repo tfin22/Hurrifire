@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [viteSingleFile()],
   server: { host: true },
   build: {
-    target: 'es2020',
+    target: 'es2022',
     assetsInlineLimit: 100_000_000,
     cssCodeSplit: false,
     chunkSizeWarningLimit: 4000,

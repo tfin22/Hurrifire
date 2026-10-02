@@ -25,7 +25,8 @@ const KEY_ACTIONS: Record<string, Action> = {
   F1: 'view1', F2: 'view2', F3: 'view3', F4: 'view4',
   '[': 'timeDown', ']': 'timeUp',
   i: 'start', j: 'bailOut', m: 'map', '`': 'debug', Escape: 'pause',
-  h: 'help', e: 'boost', c: 'canopy', k: 'panel',
+  v: 'homing', x: 'engineOff',
+  h: 'help', e: 'boost', c: 'canopy', k: 'panel', '9': 'debugNext', '0': 'debugAct',
   Enter: 'ok', Backspace: 'back',
 };
 

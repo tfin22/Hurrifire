@@ -1,6 +1,6 @@
 // Offline cache for Scramble!. The game is a single index.html, so this just
 // keeps a copy of it (plus manifest and icon) and serves cache-first.
-const CACHE = 'scramble-v1';
+const CACHE = 'scramble-v2';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (e) => {
