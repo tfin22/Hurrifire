@@ -15,6 +15,9 @@ import { compileSong, NoteEvent, Song } from './tracker';
 
 const PAN = [-0.6, 0.6, 0.6, -0.6];
 
+/** Music sits a little under the effects (about -3 dB). */
+const MUSIC_LEVEL = 0.7;
+
 /** The rpm each engine loop was built at (it plays at rate 1 there). */
 const ENGINE_RPM: Record<string, number> = { merlin: 2600, db601: 2400, radial: 2600 };
 
@@ -265,7 +268,7 @@ export class Paula {
     this.songStart = this.ctx!.currentTime + 0.1;
     this.songPass = 0;
     this.nextIdx = song.channels.map(() => 0);
-    song.channels.forEach((_, i) => { this.stopSrc(this.ch[i]); this.ch[i].kind = 'music'; this.ch[i].gain.gain.setValueAtTime(1, this.ctx!.currentTime); });
+    song.channels.forEach((_, i) => { this.stopSrc(this.ch[i]); this.ch[i].kind = 'music'; this.ch[i].gain.gain.setValueAtTime(MUSIC_LEVEL, this.ctx!.currentTime); });
   }
 
   /** Schedule the next fifth of a second of music (and refresh flight loops). */
