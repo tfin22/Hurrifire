@@ -1,0 +1,8 @@
+# Netlify: build the single-file game and publish dist/.
+# Headers live in public/_headers so they also apply to a drag-and-drop deploy of dist/.
+[build]
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
