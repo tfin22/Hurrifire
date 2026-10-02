@@ -347,3 +347,27 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
 - **Off screen**, an arrow on the edge of the view points to the nearest
   group, with its strength and distance.
 - The lead pipper stays an Assist feature.
+
+## Playtest fixes (handling, sea, readouts)
+
+- **Negative G.** Forward stick used to reach negative G a third of the way
+  forward, and the Merlin cut out the instant G went below -0.15, so any
+  push into a dive starved it. Now the first 70% of forward travel unloads
+  smoothly to zero G and only the last 30% goes negative. The engine needs a
+  quarter of a second below -0.2 G before it cuts. A hard bunt still does
+  it, as it should. Easing into a dive doesn't.
+- **Stalls.** Pulling was linear, so half stick asked for 4 G and slow
+  pulls went straight past the stall. The pull is now progressive
+  (G rises with stick^1.5), and short of the last 12% of travel the wing is
+  held just below the stall angle: it buffets and mushes rather than
+  breaking. Full back stick still stalls it, and spins are still there.
+- **The Stuka's dive.** Its dive brakes were only a closed throttle, so it
+  dived at up to 460 mph and nothing could catch it. Dive brakes are now
+  drag, holding it at about 310 mph, near the real figure.
+- **The sea** went to haze grey in the first fog band because its colour
+  ramp had only three steps. It now stays sea-blue until the last band,
+  like the land.
+- **Big readouts.** The dials are faithful but unreadable on a phone.
+  Airspeed (red with SLOW! near the stall) and height are drawn large in
+  the lower corners of the view, with the climb or sink rate. They can be
+  switched off in Settings.

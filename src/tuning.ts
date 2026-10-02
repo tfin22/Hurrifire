@@ -51,6 +51,13 @@ export const TUNING = {
     qRef: 1800,
     /** How far past the stall angle full back stick can drive the wing. */
     overStall: 1.12,
+    /** Short of that stick travel, the wing is held just below the stall (buffeting). */
+    stallStick: 0.88,
+    softStall: 0.97,
+    /** Stick-to-G curve when pulling (1 = linear; higher = gentler small pulls). */
+    pullCurve: 1.5,
+    /** Fraction of forward stick travel that unloads to zero G; the rest goes negative. */
+    pushToZeroG: 0.7,
     maxPitchRate: 2.0,
     /** Sideslip per unit rudder (rad). */
     rudderBeta: 0.18,
@@ -65,7 +72,9 @@ export const TUNING = {
     spinRoll: 2.6,
     spinYaw: 1.1,
     /** Load factor below which a carburetted Merlin cuts out. */
-    cutoutG: -0.15,
+    cutoutG: -0.2,
+    /** Seconds of negative G before the Merlin cuts out. */
+    cutoutDelay: 0.25,
     /** Seconds of rough running after the negative G ends. */
     cutoutRecover: 0.8,
     /** Fuel fraction at which the engine starts to cough and surge. */

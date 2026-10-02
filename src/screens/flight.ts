@@ -11,7 +11,7 @@ import { ControlFrame, quantiseControls, SimCmd } from '../input/input';
 import { Camera } from '../render/camera';
 import { cockpitLayout, CockpitLayout, drawCanopyFrame, drawGunsight, drawOilScreen, drawPanel, drawRearFrame, viewMessage } from '../render/cockpit';
 import { noEffects, ScreenEffects } from '../render/display';
-import { drawText } from '../render/font';
+import { drawText, drawTextScaled, scaledWidth, textWidth } from '../render/font';
 import { FrameBuffer } from '../render/framebuffer';
 import { C } from '../render/palette';
 import { fillRect, rasterStats } from '../render/raster';
@@ -554,6 +554,7 @@ export class FlightScreen implements Screen {
       drawCanopyFrame(fb, this.L, p.type.id);
       this.drawSight(fb);
       drawPanel(fb, this.L, this.panelData(), this.app.settings.slimPanel);
+      if (this.app.settings.bigReadouts) this.drawReadouts(fb, this.L.panelTop - 19);
     } else if (inside && s.lookBack) {
       drawRearFrame(fb, this.lookSide);
     } else if (this.view === 'padlock' && inside) {
@@ -696,8 +697,32 @@ export class FlightScreen implements Screen {
     if (this.view === 'chase' || this.view === 'flyby' || this.view === 'combat') {
       const sub = this.subject();
       const fs = sub.fs;
+      if (sub === this.player && this.app.settings.bigReadouts) { this.drawReadouts(fb, 236); return; }
       drawText(fb, `${sub === this.player ? '' : `${sub.type.short} ${sub.callsign}  `}${Math.round(fs.ias * MPS_TO_MPH)} MPH  ${Math.round(fs.pos.y * M_TO_FT)} FT`, 4, 4, C.WHITE, 'tiny');
     }
+  }
+
+  /**
+   * Large airspeed and height in the corners, readable on a phone: the dials
+   * are authentic but too small at 320x256. Airspeed turns red near the
+   * stall; the climb or sink rate sits under the height.
+   */
+  protected drawReadouts(fb: FrameBuffer, y: number): void {
+    const fs = this.player.fs;
+    const mph = Math.round(fs.ias * MPS_TO_MPH);
+    const ft = Math.round((fs.pos.y * M_TO_FT) / 10) * 10;
+    const vsi = Math.round((fs.vel.y * M_TO_FT * 60) / 100) * 100;
+    const stallIas = stallSpeed(fs.type, fs.mass, 1.225) * MPS_TO_MPH;
+    const slow = !fs.onGround && mph < stallIas * 1.15;
+    const col = slow ? C.FIRE_R : C.SIGHT;
+    drawTextScaled(fb, String(mph), 4, y, col, 2, C.BLACK);
+    drawText(fb, slow ? 'MPH  SLOW!' : 'MPH', 4 + scaledWidth(String(mph), 2) + 3, y + 7, col, 'tiny', C.BLACK);
+    const alt = ft.toLocaleString('en-GB');
+    const w = scaledWidth(alt, 2);
+    drawTextScaled(fb, alt, 300 - w, y, C.SIGHT, 2, C.BLACK);
+    drawText(fb, 'FT', 303, y + 7, C.SIGHT, 'tiny', C.BLACK);
+    const climb = `${vsi > 0 ? '+' : ''}${vsi.toLocaleString('en-GB')}/MIN`;
+    drawText(fb, climb, 316 - textWidth(climb, 'tiny'), y - 7, vsi < -2000 ? C.FIRE_Y : C.CHALK, 'tiny', C.BLACK);
   }
 
   protected drawPause(fb: FrameBuffer): void {

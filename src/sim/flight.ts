@@ -28,6 +28,8 @@ export interface FlightControls {
   throttle: number;
   boost: boolean;
   brake: boolean;
+  /** Dive brakes (Ju 87). */
+  airbrake?: boolean;
 }
 
 /** Damage effects on handling, produced by damage.ts. Neutral values = undamaged. */
@@ -112,6 +114,8 @@ export class FlightState {
   oilTemp = 60;
   engine: EngineState = 'running';
   cutoutT = 0;
+  /** Seconds spent below the cut-out load factor. */
+  negGT = 0;
   coughT = 0;
   surge = 1;
   boostOn = false;
@@ -228,9 +232,18 @@ function clOf(t: AircraftType, alpha: number, flaps: number, liftMul: number): n
 }
 
 /** Load factor commanded by the stick. */
+/**
+ * Stick to load factor. Pulling is progressive (small pulls are gentle, the
+ * last part of the travel is where the G is). Pushing unloads to zero G over
+ * most of the forward travel; only the last part goes negative, so easing
+ * into a dive doesn't cut the Merlin, but a hard bunt does.
+ */
 export function commandedG(t: AircraftType, pitchIn: number): number {
-  if (pitchIn >= 0) return 1 + pitchIn * (t.maxG - 1);
-  return 1 - Math.pow(-pitchIn, 1.3) * (1 - t.minG);
+  const T = TUNING.flight;
+  if (pitchIn >= 0) return 1 + Math.pow(pitchIn, T.pullCurve) * (t.maxG - 1);
+  const x = -pitchIn, P = T.pushToZeroG;
+  if (x <= P) return 1 - Math.pow(x / P, 1.3);
+  return ((x - P) / (1 - P)) * t.minG;
 }
 
 const tmpF = new Vec3(), tmpU = new Vec3(), tmpR = new Vec3();
@@ -305,7 +318,7 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   const rise = V > t.dragRiseV ? t.dragRiseK * ((V - t.dragRiseV) / t.dragRiseV) ** 2 : 0;
   const stallDrag = alpha > t.alphaStall ? (alpha - t.alphaStall) * 0.8 : 0;
   const windmill = s.engine === 'running' || s.engine === 'coughing' ? 0 : 0.008;
-  const cd = t.cd0 * (1 + rise) + k * cl * cl + s.flaps * t.flapCd + s.gear * t.gearCd + mods.extraDrag + stallDrag + windmill;
+  const cd = t.cd0 * (1 + rise) + k * cl * cl + s.flaps * t.flapCd + s.gear * t.gearCd + mods.extraDrag + stallDrag + windmill + (c.airbrake ? t.diveBrakeCd ?? 0 : 0);
   const force = SV.force.set(0, 0, 0);
   if (V > 0.5) {
     const vhat = SV.vhat.copy(vAir).scale(1 / V);
@@ -351,7 +364,9 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   const clReq = (gCmd * m * G) / Math.max(qbar * S * mods.liftMul, 1);
   let alphaReq = (clReq - t.cl0 - s.flaps * t.flapCl) / t.clAlpha;
   const asEff = t.alphaStall - s.flaps * 0.03;
-  alphaReq = clamp(alphaReq, -asEff * 0.95, asEff * T.overStall);
+  // Only the last part of the stick travel takes the wing past the stall.
+  const stallLimit = pitchIn > T.stallStick ? T.overStall : T.softStall;
+  alphaReq = clamp(alphaReq, -asEff * 0.95, asEff * stallLimit);
   const kA = t.pitchGain * authority * mods.elevator * (0.55 + 0.45 * pilot);
   let qr = pathPitch + kA * (alphaReq - alpha);
   qr = clamp(qr, -T.maxPitchRate, T.maxPitchRate);
@@ -461,7 +476,9 @@ function engineStep(s: FlightState, c: FlightControls, mods: FlightMods, dt: num
   s.throttle = clamp(c.throttle, 0, 1);
   const running = s.engine === 'running' || s.engine === 'coughing';
   // Negative-G cut-out: float carburettors starve; fuel injection doesn't care.
-  if (running && !t.fuelInjected && s.nz < T.cutoutG) {
+  // The float chamber needs a moment of real negative G to starve the carburettor.
+  s.negGT = s.nz < T.cutoutG ? s.negGT + dt : 0;
+  if (running && !t.fuelInjected && s.negGT > T.cutoutDelay) {
     if (s.cutoutT <= 0) s.events.push('cutout');
     s.cutoutT = T.cutoutRecover;
   } else if (s.cutoutT > 0) s.cutoutT -= dt;

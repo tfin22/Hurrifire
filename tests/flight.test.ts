@@ -13,6 +13,8 @@ describe('flight model: stall', () => {
       let stallV = 0;
       run(s, 60, (st, c) => {
         levelTurn(st, 0, c, 2000);
+        // Short of full back stick the wing is held just below the stall; haul back as it gets there.
+        if (st.alpha > st.type.alphaStall * 0.9) c.pitch = 1;
         c.throttle = 0;
         if (st.stalled && !stallV) stallV = st.tas;
       });
@@ -28,6 +30,7 @@ describe('flight model: stall', () => {
     let buffetFirst = -1, stallAt = -1, t = 0;
     run(s, 40, (st, c) => {
       levelTurn(st, 0, c, 2000);
+      if (st.alpha > st.type.alphaStall * 0.9) c.pitch = 1;
       c.throttle = 0;
       t += DT;
       if (st.buffet > 0.2 && buffetFirst < 0) buffetFirst = t;
@@ -183,5 +186,49 @@ describe('flight model: engine and fuel', () => {
     expect(a.pos.x).toBe(b.pos.x);
     expect(a.pos.y).toBe(b.pos.y);
     expect(a.q.w).toBe(b.q.w);
+  });
+});
+
+describe('flight model: forgiving inputs (playtest)', () => {
+  it('easing the stick forward into a shallow dive does not cut the Merlin', () => {
+    for (const push of [0.15, 0.3, 0.5, 0.65]) {
+      const s = make('spitfire', 3000, 110);
+      let cut = false;
+      run(s, 3, (st, c) => { c.pitch = -push; c.throttle = 1; if (st.events.includes('cutout')) cut = true; });
+      expect(cut, `push ${push}`).toBe(false);
+    }
+  });
+
+  it('a hard bunt still cuts it, but a brief jolt does not', () => {
+    const s = make('spitfire', 3000, 110);
+    let cut = false;
+    run(s, 1.5, (st, c) => { c.pitch = -1; c.throttle = 1; if (st.events.includes('cutout')) cut = true; });
+    expect(cut).toBe(true);
+    const j = make('spitfire', 3000, 110);
+    let t = 0, jcut = false;
+    run(j, 1, (st, c) => { t += DT; c.pitch = t < 0.1 ? -1 : 0; c.throttle = 1; if (st.events.includes('cutout')) jcut = true; });
+    expect(jcut).toBe(false);
+  });
+
+  it('pulling up firmly at cruise does not stall; most of the stick is safe even when slow', () => {
+    for (const [speed, pull] of [[110, 0.6], [110, 0.85], [75, 0.85], [60, 0.8]] as const) {
+      const s = make('spitfire', 3000, speed);
+      let stalled = false;
+      run(s, 2, (st, c) => { c.pitch = pull; c.throttle = 1; if (st.events.includes('stall')) stalled = true; });
+      expect(stalled, `${speed} m/s, stick ${pull}`).toBe(false);
+    }
+  });
+
+  it('full back stick when slow still stalls', () => {
+    const s = make('spitfire', 3000, 60);
+    let stalled = false;
+    run(s, 2, (st, c) => { c.pitch = 1; c.throttle = 1; if (st.events.includes('stall')) stalled = true; });
+    expect(stalled).toBe(true);
+  });
+
+  it('a diving Stuka with its dive brakes out stays catchable', () => {
+    const s = make('ju87', 4000, 80);
+    run(s, 25, (_st, c) => { c.pitch = stickForG(s.type, s.pitch > -1.2 ? 0.3 : 1); c.throttle = 0.1; c.airbrake = true; });
+    expect(s.tas).toBeLessThan(150); // about 330 mph
   });
 });

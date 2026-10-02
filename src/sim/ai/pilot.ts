@@ -6,13 +6,18 @@
 import { clamp, Vec3, wrapPi } from '../../core/math';
 import { AircraftType } from '../../content/aircraft';
 import { FlightControls, FlightState } from '../flight';
+import { TUNING } from '../../tuning';
 
 export const idleControls = (throttle = 0.8): FlightControls => ({ pitch: 0, roll: 0, yaw: 0, throttle, boost: false, brake: false });
 
 /** Inverse of commandedG: stick position for a wanted load factor. */
+/** Inverse of commandedG: the stick for a wanted load factor. */
 export function stickForG(t: AircraftType, g: number): number {
-  if (g >= 1) return clamp((g - 1) / (t.maxG - 1), 0, 1);
-  return -clamp(Math.pow((1 - g) / (1 - t.minG), 1 / 1.3), 0, 1);
+  const T = TUNING.flight;
+  if (g >= 1) return clamp(Math.pow(clamp((g - 1) / (t.maxG - 1), 0, 1), 1 / T.pullCurve), 0, 1);
+  const P = T.pushToZeroG;
+  if (g >= 0) return -P * Math.pow(Math.min(1, 1 - g), 1 / 1.3);
+  return -clamp(P + (1 - P) * (g / t.minG), 0, 1);
 }
 
 /** Roll stick to reach a bank angle (rad), damped by roll rate. */

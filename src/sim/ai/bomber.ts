@@ -114,9 +114,11 @@ export class BomberBrain implements Brain {
       const dir = t.clone().normalize();
       flyTo(fs, r.target.clone(), c, 4);
       c.throttle = 0.1;
+      c.airbrake = true;
       if (fs.pos.y - r.target.y < 900 || dir.y > -0.3 && hd < 300) {
         if (me.bombs > 0) r.release(me);
         this.divePhase = 2;
+        c.airbrake = false;
       }
     } else {
       // Pull out low and slow, then run for home.

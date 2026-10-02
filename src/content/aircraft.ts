@@ -99,6 +99,8 @@ export interface AircraftType {
   rollHeavyV: number;
   /** Max load factor the pilot can pull (stick force / structure). */
   maxG: number;
+  /** Drag coefficient of dive brakes, if fitted. */
+  diveBrakeCd?: number;
   minG: number;
   /** Elevator response gain (1/s). */
   pitchGain: number;
@@ -292,7 +294,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     power: 820_000, engines: 1, propEff: 0.7, critAlt: 3500, lapse: 5500, thrustV0: 55,
     dragRiseV: 165, dragRiseK: 2.5, fuelInjected: true,
     rollRate: 1.1, rollPeakV: 75, rollHeavyV: 130, maxG: 6.0, minG: -2, pitchGain: 4.0, vne: 170,
-    bestGlide: 51, fuelBurn: 0.09, boostMul: 1.05, boostSeconds: 60, torque: 0.06,
+    bestGlide: 51, fuelBurn: 0.09, boostMul: 1.05, boostSeconds: 60, torque: 0.06, diveBrakeCd: 0.09,
     groundAttitude: 0.2, gearHeight: 2.2, gear: 'fixed', pumpStrokes: 0, robust: 1.1,
     guns: [{ gun: 'mg17', pos: [-2.3, -0.5, 0.8], rounds: 500 }, { gun: 'mg17', pos: [2.3, -0.5, 0.8], rounds: 500 }],
     gunners: [mg15('rear gunner', [0, 0.7, -1.6], [0, 0.3, -1], 55, 6)],

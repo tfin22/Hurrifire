@@ -18,6 +18,8 @@ export interface Settings {
   sightSpanFt: number;
   /** Enemy markers: formations far off, individual aircraft close in, an arrow to the nearest. */
   markers: boolean;
+  /** Large airspeed and height readouts (the dials are too small on a phone). */
+  bigReadouts: boolean;
 }
 
 const KEY = 'scramble.settings.v1';
@@ -35,6 +37,7 @@ export const defaultSettings = (): Settings => ({
   convergenceYards: 300,
   sightSpanFt: 32,
   markers: true,
+  bigReadouts: true,
 });
 
 export function loadSettings(): Settings {

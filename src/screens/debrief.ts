@@ -161,6 +161,7 @@ export class SettingsScreen implements Screen {
     const items = () => [
       { label: `MODE: ${st.assist ? 'ASSIST' : 'AUTHENTIC'}`, act: () => { st.assist = !st.assist; this.refresh(); } },
       { label: `ENEMY MARKERS: ${on(st.markers)}`, act: () => { st.markers = !st.markers; this.refresh(); } },
+      { label: `BIG SPEED/HEIGHT: ${on(st.bigReadouts)}`, act: () => { st.bigReadouts = !st.bigReadouts; this.refresh(); } },
       { label: `AMMO BAR: ${on(st.ammoBar)}`, act: () => { st.ammoBar = !st.ammoBar; this.refresh(); } },
       { label: `AUTO-RUDDER: ${on(st.autoRudder)}`, act: () => { st.autoRudder = !st.autoRudder; this.refresh(); } },
       { label: `TILT CONTROL: ${on(st.tilt)}`, act: () => { void this.tilt(); } },
@@ -171,7 +172,7 @@ export class SettingsScreen implements Screen {
       { label: `PANEL: ${st.slimPanel ? 'SLIM' : 'FULL'}`, act: () => { st.slimPanel = !st.slimPanel; this.refresh(); } },
       { label: 'DONE', act: () => this.next() },
     ];
-    this.menu = new Menu(items(), 70, 44, 180, 14);
+    this.menu = new Menu(items(), 70, 38, 180, 13);
     this.refresh = () => { app.saveSettings(); const sel = this.menu.sel; this.menu.items = items(); this.menu.sel = sel; };
   }
   private refresh: () => void;

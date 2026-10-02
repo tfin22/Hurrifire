@@ -121,7 +121,8 @@ export const MAT = {
   gold: { ramp: [C.RAF_EARTH_L, C.GOLD, C.STUBBLE] },
   stubble: { ramp: [C.GOLD, C.STUBBLE, C.CHALK] },
   plough: { ramp: [C.RAF_EARTH_D, C.RAF_EARTH, C.RAF_EARTH_L] },
-  sea: { ramp: [C.SEA_D, C.SEA, C.HAZE] },
+  // Sea stays sea through the near fog bands (a three-step ramp went to haze at the first).
+  sea: { ramp: [C.SEA_D, C.SEA, C.SEA] },
   chalk: { ramp: [C.GREY_L, C.CHALK, C.WHITE] },
   town: { ramp: [C.SMOKE, C.GREY_D, C.GREY_L] },
   roof: { ramp: [C.RAF_EARTH_D, C.RAF_EARTH, C.RED] },
