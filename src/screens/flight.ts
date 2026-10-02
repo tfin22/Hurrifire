@@ -128,13 +128,28 @@ export class FlightScreen implements Screen {
     if (fs.type.gear === 'pump' && Math.abs(fs.gear - this.lastGear) > 0.06) { this.app.sound('pump', 0.5); this.lastGear = fs.gear; }
     this.app.audio.flight({
       engine: fs.engine === 'running' || fs.engine === 'coughing' || fs.engine === 'starting' ? kind : null,
-      rpmFrac: fs.rpm / 2600,
+      rpm: fs.rpm,
       throttle: fs.throttle,
+      // Throttle closed (or the engine missing): the crackling overrun loop takes over.
+      power: fs.engine === 'running' ? Math.max(0, Math.min(1, (fs.throttle - 0.12) / 0.45)) : fs.engine === 'coughing' ? 0.25 : 0,
+      drone: this.bomberDrone(),
       guns: shooting ? (eight ? 8 : 4) : 0,
       speed: fs.tas,
       buffet: fs.onGround ? 0 : fs.buffet,
       inside: this.view === 'cockpit' || this.view === 'padlock',
     });
+  }
+
+  /** How loud the nearest bomber's engines are from here (0..1): heard inside a mile or so. */
+  private bomberDrone(): number {
+    const me = this.player;
+    let near = Infinity;
+    for (const q of this.world.planes) {
+      if (q === me || q.status !== 'flying' || (q.type.role !== 'bomber' && q.type.role !== 'diveBomber')) continue;
+      near = Math.min(near, q.pos.distTo(me.pos));
+    }
+    const R = 2200;
+    return near < R ? (1 - near / R) ** 1.5 : 0;
   }
 
   protected requestBail(): void {

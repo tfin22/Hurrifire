@@ -15,11 +15,48 @@ describe('the sample bank', () => {
     }
   });
   it('has the sounds the game asks for', () => {
-    for (const n of ['merlin', 'db601', 'browning8', 'clang', 'explode', 'cough', 'buffet', 'bell', 'phone', 'rt', 'pump', 'wind', 'starter']) expect(S[n], n).toBeDefined();
+    for (const n of ['merlin', 'merlinIdle', 'db601', 'db601Idle', 'drone', 'browning8', 'clang', 'explode', 'cough', 'buffet', 'bell', 'phone', 'rt', 'pump', 'wind', 'starter']) expect(S[n], n).toBeDefined();
   });
   it('the Merlin and the DB 601 are different notes', () => {
     expect(S.merlin.data.length).not.toBe(S.db601.data.length);
   });
+  /** Energy of a sample at one frequency (a single DFT bin). */
+  const at = (name: string, hz: number) => {
+    const { data, rate } = S[name];
+    let re = 0, im = 0;
+    for (let i = 0; i < data.length; i++) { const a = (2 * Math.PI * hz * i) / rate; re += data[i] * Math.cos(a); im += data[i] * Math.sin(a); }
+    return Math.hypot(re, im) / data.length;
+  };
+  const crest = (d: Float32Array) => { let m = 0, q = 0; for (const v of d) { m = Math.max(m, Math.abs(v)); q += v * v; } return m / Math.sqrt(q / d.length); };
+
+  it('the Merlin fires twelve cylinders evenly: its note is 6x the crank speed (260 Hz at 2,600 rpm)', () => {
+    const fire = at('merlin', 260);
+    for (const off of [200, 230, 290, 320]) expect(fire, `${off} Hz`).toBeGreaterThan(at('merlin', off) * 3);
+    // The banks alternate: a growl at half the firing rate; the prop throbs at 1.43 blade passes a rev.
+    expect(at('merlin', 130)).toBeGreaterThan(at('merlin', 100) * 2);
+    expect(at('merlin', 62)).toBeGreaterThan(at('merlin', 45) * 2);
+  });
+
+  it('the DB 601 sits at 240 Hz (2,400 rpm), with its supercharger singing above', () => {
+    expect(at('db601', 240)).toBeGreaterThan(at('db601', 200) * 3);
+    expect(at('db601', 1480)).toBeGreaterThan(at('db601', 1300) * 3);
+  });
+
+  it('throttled back, the Merlin crackles and pops; the fuel-injected DB 601 does not', () => {
+    expect(crest(S.merlinIdle.data)).toBeGreaterThan(crest(S.merlin.data) * 1.8);
+    expect(crest(S.db601Idle.data)).toBeLessThan(crest(S.merlinIdle.data) * 0.6);
+  });
+
+  it('engine loops join up without a click', () => {
+    for (const n of ['merlin', 'merlinIdle', 'db601', 'drone']) {
+      const d = S[n].data;
+      let typical = 0;
+      for (let i = 1; i < d.length; i++) typical += Math.abs(d[i] - d[i - 1]);
+      typical /= d.length;
+      expect(Math.abs(d[0] - d[d.length - 1]), n).toBeLessThan(typical * 8 + 0.05);
+    }
+  });
+
   it('is the same every time (seeded)', () => {
     expect(Array.from(buildSamples().clang.data)).toEqual(Array.from(S.clang.data));
   });
