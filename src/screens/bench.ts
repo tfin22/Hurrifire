@@ -8,7 +8,9 @@ import { Camera } from '../render/camera';
 import { FrameBuffer } from '../render/framebuffer';
 import { drawText } from '../render/font';
 import { C } from '../render/palette';
-import { rasterStats, fillConvex } from '../render/raster';
+import { rasterStats, fillConvex, fillRect, rectOutline } from '../render/raster';
+
+const BACK = { x: 268, y: 2, w: 50, h: 16 };
 import { Renderer3D } from '../render/renderer3d';
 import { buildCopper, drawSky, drawSun } from '../render/sky';
 import { spitfireModel } from '../content/models/spitfire';
@@ -22,6 +24,8 @@ export class BenchScreen implements Screen {
   private r3d = new Renderer3D();
   private many = false;
   private frameMs = 0;
+  /** Model shown on the turntable; steps with left/right or taps at the sides. */
+  private index = 0;
 
   constructor(private app: App, private onExit: () => void, private models: Model[] = [spitfireModel]) {
     this.cam.setViewport(0, 0, 320, 256, 62);
@@ -29,8 +33,17 @@ export class BenchScreen implements Screen {
 
   frame(): void {
     const s = this.app.input;
-    if (s.consume('back') || s.consume('pause')) this.onExit();
-    if (s.consume('ok') || s.taps.length) this.many = !this.many;
+    if (s.consume('back') || s.consume('pause')) { this.onExit(); return; }
+    const step = (d: number) => { this.index = (this.index + d + this.models.length) % this.models.length; this.many = false; };
+    if (s.consume('left')) step(-1);
+    if (s.consume('right')) step(1);
+    if (s.consume('ok')) this.many = !this.many;
+    for (const t of s.taps) {
+      if (t.x >= BACK.x && t.y <= BACK.y + BACK.h) { this.onExit(); return; }
+      if (t.x < 80) step(-1);
+      else if (t.x > 240) step(1);
+      else this.many = !this.many;
+    }
   }
 
   tick(): void {
@@ -52,7 +65,7 @@ export class BenchScreen implements Screen {
     this.r3d.begin(cam, fb);
     const fwd = cam.forward();
     if (!this.many) {
-      const m = this.models[Math.floor(t / 6) % this.models.length];
+      const m = this.models[this.index];
       const pos = cam.pos.clone().addScaled(fwd, 18);
       const q = Quat.fromEuler(t * 0.6, 0.25 * Math.sin(t * 0.4), 0.4 * Math.sin(t * 0.5));
       this.r3d.addModel(m, pos, q, { noCollapse: true });
@@ -73,7 +86,11 @@ export class BenchScreen implements Screen {
     this.frameMs = this.frameMs * 0.9 + (performance.now() - t0) * 0.1;
     drawText(fb, `FPS ${this.app.loop.fps.toFixed(1)}  ${this.frameMs.toFixed(1)}MS`, 4, 4, C.WHITE, 'tiny');
     drawText(fb, `POLYS ${rasterStats.polys}  OBJ ${this.r3d.stats.objects}`, 4, 11, C.WHITE, 'tiny');
-    drawText(fb, this.many ? '40 AIRCRAFT - TAP TO TOGGLE' : 'TURNTABLE - TAP FOR 40', 4, 18, C.SIGHT, 'tiny');
+    drawText(fb, this.many ? '40 AIRCRAFT - TAP MIDDLE FOR ONE' : `${this.index + 1}/${this.models.length}  < TAP SIDES >  TAP MIDDLE FOR 40`, 4, 18, C.SIGHT, 'tiny');
+    // The way out.
+    fillRect(fb, BACK.x, BACK.y, BACK.w, BACK.h, C.BLACK);
+    rectOutline(fb, BACK.x, BACK.y, BACK.w, BACK.h, C.GREY_L);
+    drawText(fb, 'BACK', BACK.x + 8, BACK.y + 4, C.WHITE);
   }
 
   /** A quick procedural patchwork; the real terrain renderer is terrain.ts. */

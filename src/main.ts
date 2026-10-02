@@ -17,7 +17,7 @@ import { generateWeather, windVector } from './sim/weather';
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
 const app = new App(canvas, (a) => {
   const qs = new URLSearchParams(location.search);
-  if (qs.has('models')) return new BenchScreen(a, () => {}, allModels());
+  if (qs.has('models')) return new BenchScreen(a, () => { location.search = ''; }, allModels());
   if (!qs.has('free')) {
     const flow = new Flow(a);
     (window as unknown as { flow: Flow }).flow = flow;
