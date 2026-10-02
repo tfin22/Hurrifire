@@ -16,6 +16,7 @@ import type { Plane } from '../sim/plane';
 import type { Homing } from '../sim/sortie';
 import type { World } from '../sim/world';
 import { TUNING } from '../tuning';
+import { targetScale } from '../sim/ballistics';
 
 interface Group {
   members: Plane[];
@@ -111,7 +112,7 @@ export function drawSpotting(fb: FrameBuffer, cam: Camera, world: World, me: Pla
       for (const q of byRange) {
         const d = q.pos.distTo(me.pos);
         if (d > S.individualRange * 1.5 || !cam.project(q.pos, out)) continue;
-        const r = Math.max(3, (cam.f * q.type.span * 0.5) / out.z + 2);
+        const r = Math.max(3, (cam.f * q.type.span * 0.5 * (world.bigTargets ? targetScale(d) : 1)) / out.z + 2);
         const x0 = out.x - r, x1 = out.x + r, y0 = out.y - r, y1 = out.y + r;
         const ace = q.skill.level === 'experte';
         const col = ace ? C.SIGHT : C.FIRE_R;

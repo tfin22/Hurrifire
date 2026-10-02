@@ -3,6 +3,7 @@
 
 import { World } from '../sim/world';
 import { modelFor } from '../content/models';
+import { targetScale } from '../sim/ballistics';
 import { debrisModel, parachuteModel } from '../content/models/misc';
 import { Quat, Vec3 } from '../core/math';
 import { C } from './palette';
@@ -95,7 +96,10 @@ export class SceneRenderer {
       if (p.id === opts.skipPlaneId) continue;
       if (p.status === 'destroyed' || p.status === 'crashed') continue;
       const fs = p.fs;
+      const me = world.player;
+      const k = world.bigTargets && me && p.side !== me.side ? targetScale(fs.pos.distTo(me.pos)) : 1;
       r.addModel(modelFor(p.type.id), fs.pos, fs.q, {
+        scale: k !== 1 ? [k, k, k] : undefined,
         flashParts: p.flash > 0 ? p.flashParts : 0,
         hideParts: p.hiddenParts,
         speckColour: undefined,

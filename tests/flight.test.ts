@@ -232,3 +232,23 @@ describe('flight model: forgiving inputs (playtest)', () => {
     expect(s.tas).toBeLessThan(150); // about 330 mph
   });
 });
+
+describe('flight model: stall guard (player assist)', () => {
+  it('full back stick at combat speed holds at the buffet instead of stalling', () => {
+    const guarded = { ...env, stallGuard: true };
+    for (const speed of [60, 80, 100]) {
+      const s = make('spitfire', 3000, speed);
+      const rng = new Rng(9), mods = neutralMods(1), c = idleControls(1);
+      let stalled = false, buffet = 0;
+      for (let i = 0; i < 150; i++) {
+        c.pitch = 1;
+        stepFlight(s, c, guarded, mods, DT, rng);
+        if (s.events.includes('stall')) stalled = true;
+        buffet = Math.max(buffet, s.buffet);
+        s.events.length = 0;
+      }
+      expect(stalled, `${speed} m/s`).toBe(false);
+      expect(buffet, `${speed} m/s`).toBeGreaterThan(0.5);
+    }
+  });
+});

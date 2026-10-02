@@ -91,6 +91,8 @@ export interface FlightEnv {
   /** Called at the moment of ground contact from the air. */
   onTouchdown?(info: TouchdownInfo): GroundResponse;
   autoRudder: boolean;
+  /** Full back stick holds the wing at the buffet rather than stalling it (the player's assist). */
+  stallGuard?: boolean;
 }
 
 export type FlightEventKind =
@@ -365,7 +367,7 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   let alphaReq = (clReq - t.cl0 - s.flaps * t.flapCl) / t.clAlpha;
   const asEff = t.alphaStall - s.flaps * 0.03;
   // Only the last part of the stick travel takes the wing past the stall.
-  const stallLimit = pitchIn > T.stallStick ? T.overStall : T.softStall;
+  const stallLimit = pitchIn > T.stallStick && !env.stallGuard ? T.overStall : T.softStall;
   alphaReq = clamp(alphaReq, -asEff * 0.95, asEff * stallLimit);
   const kA = t.pitchGain * authority * mods.elevator * (0.55 + 0.45 * pilot);
   let qr = pathPitch + kA * (alphaReq - alpha);

@@ -408,3 +408,39 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   campaign each reprimand puts promotion back by three sorties. Any forced
   landing in a field also costs the squadron that aircraft for a day while
   it's fetched back. An RAF pilot who lands in France is taken prisoner.
+
+## Freedom to fight (playtest)
+
+- **Blackout came too soon.** Greying began at 4.3 G and a 7 G pull blacked
+  out in under two seconds, so every hard turn ended in the dark. Greying
+  now starts at 5 G and builds at 60% of the old rate, and recovery is
+  faster. A 6.5 G turn greys within a second, holds for several seconds
+  without blacking out, and only goes black after about ten. AI pilots are
+  bound by the same limits.
+- **Stall guard** (setting, on by default; also in the pause menu). Below
+  about 215 mph the last 12% of back-stick travel took the wing past the
+  stall, and in a fight that's where the stick lives. With the guard on,
+  full back stick holds the wing at the buffet: maximum lift, the shudder
+  and the energy bleed, but no departure. With it off the wing can be
+  stalled and spun as before. It applies to the player's aircraft only.
+- **Big targets** (setting, on by default; also in the pause menu). At 320
+  pixels across, a true-size 109 at 300 yards is a few pixels, so gunnery
+  was mostly luck. Enemy aircraft are now drawn up to twice their size
+  with distance: true size inside 60 m, so close passes and collisions
+  look right, and full scale beyond 300 m. The player's rounds hit them
+  as large as they're drawn, by scaling the round's path into the body
+  frame. AI gunnery is unchanged, so this only helps the player. The
+  setting is kept with the world so a replay re-runs the same hits.
+- **The pause menu** had outgrown its box. It's taller now, with tighter
+  rows.
+- **Compass strip** (setting, on by default). A heading tape across the top
+  of the view, in the cockpit and chase views. It moves one pixel per
+  degree, with ticks every 5 degrees and numbers every 30, and the heading
+  in a box over the centre. A green caret marks the course to steer: the
+  homing field if one was asked for, otherwise the controller's last vector
+  until the fight starts. When the course is off the strip, the caret turns
+  yellow and sits at the end you should turn towards. It's not period (the
+  real compass is on the panel), but the dial is too small to fly a vector
+  by on a phone.
+- The keys line under Settings ran off the screen. It now takes three lines
+  and includes V (homing) and X (engine off).

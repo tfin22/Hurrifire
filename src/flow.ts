@@ -136,6 +136,6 @@ export class Flow {
   private replay(sortie: FlownSortie, make: () => FlownSortie, flown: SortieScreen, back: () => void): void {
     sortie.rewind();
     const again = make();
-    this.app.setScreen(new ReplayScreen(this.app, again, flown.recording, flown.world.autoRudder, back));
+    this.app.setScreen(new ReplayScreen(this.app, again, flown.recording, { autoRudder: flown.world.autoRudder, stallGuard: flown.world.stallGuard, bigTargets: flown.world.bigTargets }, back));
   }
 }

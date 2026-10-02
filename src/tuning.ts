@@ -329,13 +329,21 @@ export const TUNING = {
     maxLabels: 6,
   },
 
+  targets: {
+    /** Big targets: enemies are drawn and hit this much larger at range... */
+    scale: 2.0,
+    /** ...growing from true size inside `near` metres to full scale beyond `far`. */
+    near: 60,
+    far: 300,
+  },
+
   effects: {
     /** G at which greying starts, and the G-seconds of reserve before full blackout. */
-    greyStartG: 4.3,
-    blackoutG: 6.2,
+    greyStartG: 5.0,
+    blackoutG: 6.5,
     /** Stress per second per G above greyStartG; 1.0 = fully grey, 1.3–2.3 = blacking out. */
-    gTolerancePerSec: 0.25,
-    gRecoveryPerSec: 0.5,
+    gTolerancePerSec: 0.15,
+    gRecoveryPerSec: 0.7,
     redoutStartG: -2.0,
     stallBuffetShakePx: 2,
     cloudFadeRate: 2.5,

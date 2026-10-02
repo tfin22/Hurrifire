@@ -27,7 +27,7 @@ export interface FlownSortie {
   readonly objects: WorldObjects;
   readonly ships: Ship[];
   readonly spec: { start: 'readiness' | 'air'; month: number; day: number; home: string; leading: boolean };
-  readonly controller: { readonly log: RTMessage[] };
+  readonly controller: { readonly log: RTMessage[]; readonly lastVector?: { heading: number } | null };
   readonly prompts: string[];
   readonly result: SortieResult | null;
   readonly phase: string;
@@ -69,6 +69,14 @@ export class SortieScreen extends FlightScreen {
 
   protected homing(): Homing | null {
     return this.sortie.homing ?? null;
+  }
+
+  /** A homing if asked for; otherwise the controller's last vector, until the fight starts. */
+  protected steerHeading(): number | null {
+    const h = super.steerHeading();
+    if (h !== null) return h;
+    const v = this.sortie.controller.lastVector;
+    return v && !this.sortie.engaged ? v.heading : null;
   }
 
   protected stepSim(f: ControlFrame): void {

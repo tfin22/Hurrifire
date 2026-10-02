@@ -15,7 +15,11 @@ describe('G effects', () => {
     run(p, 6.5, 1);
     expect(p.grey).toBeGreaterThan(0.2);
     expect(p.black).toBe(0);
-    run(p, 6.5, 6);
+    // A hard turn of several seconds greys but doesn't black out (playtest)...
+    run(p, 6.5, 3);
+    expect(p.black).toBe(0);
+    // ...hold it long enough and it does.
+    run(p, 6.5, 7);
     expect(p.black).toBeGreaterThan(0.9);
     run(p, 1, 6);
     expect(p.black).toBe(0);

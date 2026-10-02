@@ -18,9 +18,11 @@ export class ReplayScreen extends SortieScreen {
   private ended = false;
   private blink = 0;
 
-  constructor(app: App, sortie: FlownSortie, private frames: readonly ControlFrame[], autoRudder: boolean, private end: () => void) {
+  constructor(app: App, sortie: FlownSortie, private frames: readonly ControlFrame[], assists: { autoRudder: boolean; stallGuard: boolean; bigTargets: boolean }, private end: () => void) {
     super(app, sortie, () => this.finish(), () => this.finish());
-    this.world.autoRudder = autoRudder;
+    this.world.autoRudder = assists.autoRudder;
+    this.world.stallGuard = assists.stallGuard;
+    this.world.bigTargets = assists.bigTargets;
     this.view = 'chase';
     this.touchMode = 'menu';
     this.dropCompression = false;

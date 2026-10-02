@@ -22,7 +22,7 @@ import { Plane } from '../sim/plane';
 import { leadPoint } from '../sim/ballistics';
 import { damageFraction, fireTimeLeft } from '../sim/damage';
 import { haptics } from '../input/devices';
-import { line, rectOutline, pset } from '../render/raster';
+import { fillConvex, line, rectOutline, pset } from '../render/raster';
 import { approachState, drawApproachIndicator, drawFieldHighlights, FieldCandidate, findFields } from './landingAids';
 import { stallSpeed } from '../content/aircraft';
 import { World } from '../sim/world';
@@ -66,6 +66,8 @@ export class FlightScreen implements Screen {
 
   constructor(protected app: App, protected opts: FlightScreenOpts) {
     this.world = opts.world;
+    this.world.stallGuard = app.settings.stallGuard;
+    this.world.bigTargets = app.settings.bigTargets;
     this.scene = new SceneRenderer(opts.terrain);
     this.L = cockpitLayout(app.settings.slimPanel);
   }
@@ -371,7 +373,7 @@ export class FlightScreen implements Screen {
     let pick = -1;
     if (s.consume('ok')) pick = this.pauseSel;
     for (const t of s.taps) {
-      const i = Math.floor((t.y - 80) / 14);
+      const i = Math.floor((t.y - 66) / 13);
       if (i >= 0 && i < items.length && t.x > 80 && t.x < 240) pick = i;
     }
     if (pick >= 0) items[pick].act();
@@ -382,6 +384,9 @@ export class FlightScreen implements Screen {
     return [
       { label: 'RESUME', act: () => { this.paused = false; this.touchMode = 'flight'; this.app.touch.setMode('flight'); } },
       { label: `AUTO-RUDDER ${st.autoRudder ? 'ON' : 'OFF'}`, act: () => { st.autoRudder = !st.autoRudder; this.world.autoRudder = st.autoRudder; this.app.saveSettings(); } },
+      { label: `STALL GUARD ${st.stallGuard ? 'ON' : 'OFF'}`, act: () => { st.stallGuard = !st.stallGuard; this.world.stallGuard = st.stallGuard; this.app.saveSettings(); } },
+      { label: `BIG TARGETS ${st.bigTargets ? 'ON' : 'OFF'}`, act: () => { st.bigTargets = !st.bigTargets; this.world.bigTargets = st.bigTargets; this.app.saveSettings(); } },
+      { label: `COMPASS ${st.compass ? 'ON' : 'OFF'}`, act: () => { st.compass = !st.compass; this.app.saveSettings(); } },
       { label: `TILT ${st.tilt ? 'ON' : 'OFF'}`, act: () => { void this.toggleTilt(); } },
       { label: 'CALIBRATE TILT', act: () => this.app.tilt.calibrate() },
       { label: `PANEL ${st.slimPanel ? 'SLIM' : 'FULL'}`, act: () => { st.slimPanel = !st.slimPanel; this.L = cockpitLayout(st.slimPanel); this.app.saveSettings(); } },
@@ -565,6 +570,7 @@ export class FlightScreen implements Screen {
       this.drawSight(fb);
       drawPanel(fb, this.L, this.panelData(), this.app.settings.slimPanel);
       if (this.app.settings.bigReadouts) this.drawReadouts(fb, this.L.panelTop - 19);
+      if (this.app.settings.compass) this.drawCompass(fb, this.player);
     } else if (inside && s.lookBack) {
       drawRearFrame(fb, this.lookSide);
     } else if (this.view === 'padlock' && inside) {
@@ -709,6 +715,7 @@ export class FlightScreen implements Screen {
     if (this.view === 'chase' || this.view === 'flyby' || this.view === 'combat') {
       const sub = this.subject();
       const fs = sub.fs;
+      if (sub === this.player && this.app.settings.compass) this.drawCompass(fb, sub);
       if (sub === this.player && this.app.settings.bigReadouts) { this.drawReadouts(fb, 236); return; }
       drawText(fb, `${sub === this.player ? '' : `${sub.type.short} ${sub.callsign}  `}${Math.round(fs.ias * MPS_TO_MPH)} MPH  ${Math.round(fs.pos.y * M_TO_FT)} FT`, 4, 4, C.WHITE, 'tiny');
     }
@@ -737,11 +744,59 @@ export class FlightScreen implements Screen {
     drawText(fb, climb, 316 - textWidth(climb, 'tiny'), y - 7, vsi < -2000 ? C.FIRE_Y : C.CHALK, 'tiny', C.BLACK);
   }
 
+  /** The course to steer, shown on the compass strip (a homing, or the controller's vector). */
+  protected steerHeading(): number | null {
+    const h = this.homing();
+    if (!h) return null;
+    const p = this.player.pos;
+    return Math.atan2(h.field.pos.x - p.x, h.field.pos.z - p.z);
+  }
+
+  /**
+   * A heading strip across the top of the view: one pixel per degree, ticks
+   * every 5, numbers every 30, the heading in a box over the centre, and a
+   * marker for the course to steer. Not period, but easy to fly a vector by.
+   */
+  protected drawCompass(fb: FrameBuffer, sub: Plane): void {
+    const half = 60, cx = 160, y = 20;
+    const hdg = ((sub.fs.heading * 180) / Math.PI + 360) % 360;
+    fillRect(fb, cx - half - 1, y, half * 2 + 3, 13, C.BLACK);
+    fb.setClip(cx - half, y, cx + half + 1, y + 13);
+    const NAMES: Record<number, string> = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
+    for (let d = Math.ceil((hdg - half) / 5) * 5; d <= hdg + half; d += 5) {
+      const x = Math.round(cx + (d - hdg));
+      const dd = ((d % 360) + 360) % 360;
+      const big = dd % 10 === 0;
+      fillRect(fb, x, y + 13 - (big ? 4 : 2), 1, big ? 4 : 2, big ? C.WHITE : C.GREY_L);
+      if (dd % 30 === 0) {
+        const t = NAMES[dd] ?? String(dd / 10).padStart(2, '0');
+        drawText(fb, t, x - (textWidth(t, 'tiny') >> 1), y + 2, NAMES[dd] ? C.SIGHT : C.CHALK, 'tiny');
+      }
+    }
+    // Course to steer: a caret on the strip, or pinned to the end it's off.
+    const steer = this.steerHeading();
+    if (steer !== null) {
+      let rel = ((steer * 180) / Math.PI - hdg + 540) % 360 - 180;
+      const off = Math.abs(rel) > half - 2;
+      rel = Math.max(-(half - 2), Math.min(half - 2, rel));
+      const x = Math.round(cx + rel);
+      fillConvex(fb, [x - 3, x + 3, x], [y + 13, y + 13, y + 8], 3, off ? C.FIRE_Y : C.RAF_GREEN_L);
+    }
+    fb.resetClip();
+    rectOutline(fb, cx - half - 1, y, half * 2 + 3, 13, C.GREY_D);
+    // The heading itself, boxed over the centre line.
+    const t = String(Math.round(hdg) % 360).padStart(3, '0');
+    fillRect(fb, cx - 8, y + 12, 17, 9, C.BLACK);
+    rectOutline(fb, cx - 8, y + 12, 17, 9, C.SIGHT);
+    drawText(fb, t, cx - 5, y + 14, C.WHITE, 'tiny');
+    fillRect(fb, cx, y + 8, 1, 4, C.SIGHT);
+  }
+
   protected drawPause(fb: FrameBuffer): void {
-    fillRect(fb, 70, 50, 180, 20 + this.pauseItems().length * 14, C.BLACK);
-    drawText(fb, 'PAUSED', 139, 56, C.SIGHT);
+    fillRect(fb, 70, 44, 180, 34 + this.pauseItems().length * 13, C.BLACK);
+    drawText(fb, 'PAUSED', 139, 50, C.SIGHT);
     this.pauseItems().forEach((it, i) => {
-      drawText(fb, (i === this.pauseSel ? '> ' : '  ') + it.label, 84, 80 + i * 14, i === this.pauseSel ? C.WHITE : C.GREY_L);
+      drawText(fb, (i === this.pauseSel ? '> ' : '  ') + it.label, 84, 68 + i * 13, i === this.pauseSel ? C.WHITE : C.GREY_L);
     });
   }
 

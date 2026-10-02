@@ -9,7 +9,7 @@ import { ControlFrame } from '../input/input';
 import { PART } from '../render/model';
 import { TUNING } from '../tuning';
 import { AIContext } from './ai/types';
-import { Bullet, hitZone, stepBullet } from './ballistics';
+import { Bullet, hitZone, stepBullet, targetScale } from './ballistics';
 import { applyHit, controllable, DamageEvent, flightMods, tickDamage } from './damage';
 import { FlightEnv, GroundResponse, stepFlight, TouchdownInfo } from './flight';
 import { GroundModel, SURFACE_FRICTION } from './ground';
@@ -88,6 +88,9 @@ export class World {
   /** Unit vector towards the sun. */
   readonly sun = new Vec3(0.35, 0.75, -0.55).normalize();
   autoRudder = true;
+  /** Player assists (from settings; kept with the world so a replay matches). */
+  stallGuard = false;
+  bigTargets = false;
   readonly bullets: Bullet[] = [];
   readonly particles: Particle[] = [];
   readonly parachutes: Parachute[] = [];
@@ -224,6 +227,7 @@ export class World {
     let e = this.envCache.get(p.id);
     if (!e) { e = this.makeEnv(p); this.envCache.set(p.id, e); }
     e.autoRudder = p.isPlayer ? this.autoRudder : true;
+    e.stallGuard = p.isPlayer && this.stallGuard;
     e.wind = this.weather.wind;
     return e;
   }
@@ -507,15 +511,18 @@ export class World {
       if (b.dead) continue;
       for (const p of this.planes) {
         if (p.id === b.ownerId || !p.airborneObject) continue;
-        const r = p.type.span * 0.6 + 20;
+        // Big targets: the player's rounds hit enemies as large as they're drawn.
+        const me = this.player;
+        const k = this.bigTargets && me && b.ownerId === me.id && p.side !== me.side ? targetScale(p.pos.distTo(me.pos)) : 1;
+        const r = (p.type.span * 0.6 + 20) * k;
         if (p.pos.distSqTo(b.pos) > r * r) continue;
         if (p.isPlayer && this.cheats.invulnerable) continue;
-        const a = p.fs.q.unrotate(b.prev.clone().sub(p.prevPos));
-        const c = p.fs.q.unrotate(b.pos.clone().sub(p.pos));
+        const a = p.fs.q.unrotate(b.prev.clone().sub(p.prevPos)).scale(1 / k);
+        const c = p.fs.q.unrotate(b.pos.clone().sub(p.pos)).scale(1 / k);
         const h = hitZone(a, c, p.type.zones);
         if (!h) continue;
         b.dead = true;
-        const hitPos = a.clone().lerp(c, h.t);
+        const hitPos = a.clone().lerp(c, h.t).scale(k);
         const world = p.fs.q.rotate(hitPos).add(p.pos);
         this.puff(world, 'spark', 0.6, 0.15, p.fs.vel.clone().scale(0.9));
         p.flash = 0.12;

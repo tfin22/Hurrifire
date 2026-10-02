@@ -165,6 +165,9 @@ export class SettingsScreen implements Screen {
       { label: `BIG SPEED/HEIGHT: ${on(st.bigReadouts)}`, act: () => { st.bigReadouts = !st.bigReadouts; this.refresh(); } },
       { label: `AMMO BAR: ${on(st.ammoBar)}`, act: () => { st.ammoBar = !st.ammoBar; this.refresh(); } },
       { label: `AUTO-RUDDER: ${on(st.autoRudder)}`, act: () => { st.autoRudder = !st.autoRudder; this.refresh(); } },
+      { label: `STALL GUARD: ${on(st.stallGuard)}`, act: () => { st.stallGuard = !st.stallGuard; this.refresh(); } },
+      { label: `BIG TARGETS: ${on(st.bigTargets)}`, act: () => { st.bigTargets = !st.bigTargets; this.refresh(); } },
+      { label: `COMPASS STRIP: ${on(st.compass)}`, act: () => { st.compass = !st.compass; this.refresh(); } },
       { label: `TILT CONTROL: ${on(st.tilt)}`, act: () => { void this.tilt(); } },
       { label: `HAPTICS: ${on(st.haptics)}`, act: () => { st.haptics = !st.haptics; this.refresh(); } },
       { label: `1990 MODE: ${on(st.retro)}`, act: () => { st.retro = !st.retro; this.refresh(); } },
@@ -173,7 +176,7 @@ export class SettingsScreen implements Screen {
       { label: `PANEL: ${st.slimPanel ? 'SLIM' : 'FULL'}`, act: () => { st.slimPanel = !st.slimPanel; this.refresh(); } },
       { label: 'DONE', act: () => this.next() },
     ];
-    this.menu = new Menu(items(), 70, 38, 180, 13);
+    this.menu = new Menu(items(), 70, 32, 180, 12);
     this.refresh = () => { app.saveSettings(); const sel = this.menu.sel; this.menu.items = items(); this.menu.sel = sel; };
   }
   private refresh: () => void;
@@ -192,8 +195,9 @@ export class SettingsScreen implements Screen {
     fillRect(fb, 0, 0, W, 256, C.SMOKE);
     panel(fb, 50, 24, 220, 200);
     this.menu.draw(fb, 'SETTINGS');
-    drawTextCentered(fb, 'ASSIST: LEAD MARKER, LANDING AIDS, ONE START BUTTON', 160, 230, C.CHALK, 'tiny');
-    drawTextCentered(fb, 'KEYS: ARROWS/WASD STICK, SPACE FIRE, +/- THROTTLE, G GEAR, F FLAPS, P PADLOCK,', 160, 238, C.GREY_L, 'tiny');
-    drawTextCentered(fb, 'B LOOK BACK, T TALLY-HO, 1-4 ORDERS, M MAP, I START, J BAIL OUT, [ ] TIME, ` DEBUG', 160, 245, C.GREY_L, 'tiny');
+    drawTextCentered(fb, 'ASSIST: LEAD MARKER, LANDING AIDS, ONE START BUTTON', 160, 229, C.CHALK, 'tiny');
+    drawTextCentered(fb, 'KEYS: ARROWS/WASD STICK, SPACE FIRE, +/- THROTTLE, G GEAR, F FLAPS,', 160, 238, C.GREY_L, 'tiny');
+    drawTextCentered(fb, 'P PADLOCK, B LOOK BACK, T TALLY-HO, 1-4 ORDERS, M MAP, V HOMING,', 160, 245, C.GREY_L, 'tiny');
+    drawTextCentered(fb, 'I START, X ENGINE OFF, J BAIL OUT, [ ] TIME, ` DEBUG', 160, 252, C.GREY_L, 'tiny');
   }
 }

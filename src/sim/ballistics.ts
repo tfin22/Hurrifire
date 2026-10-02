@@ -22,6 +22,13 @@ export class Bullet {
   ) {}
 }
 
+/** Big-targets scale for an enemy at distance d from the player: true size close in, larger at range. */
+export function targetScale(d: number): number {
+  const T = TUNING.targets;
+  const t = Math.min(1, Math.max(0, (d - T.near) / (T.far - T.near)));
+  return 1 + (T.scale - 1) * t;
+}
+
 /** Advance a bullet one step: drag, gravity, motion. */
 export function stepBullet(b: Bullet, dt: number): void {
   b.prev.copy(b.pos);
