@@ -331,3 +331,19 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   Callsigns and names are invented.
 - The sortie shares the world, raid, AI, debrief and replay with the RAF
   sortie; the screen talks to either through one small interface.
+
+## Finding the enemy
+
+- Playtesting said it was very hard to find the enemy, so the markers now
+  work at every range and in Authentic mode too (Settings: ENEMY MARKERS).
+- **Reported raids** (radar plots not yet in sight) are a yellow oblong with
+  the radar's estimate, "RAID 30+ AIRCRAFT / OFF HYTHE 18 MI", drawn at the
+  radar's height, which may be thousands of feet out, as it was.
+- **Formations in sight** within 45 km are a white oblong round the whole
+  group, "11 BOMBERS + 8 FIGHTERS / OFF DUNGENESS 7.5 MI".
+- **Inside 4.5 km** the oblong breaks into brackets on each aircraft. The
+  nearest six get their type, and experten get "ACE!" in yellow. Labels
+  that would overlap are moved or dropped.
+- **Off screen**, an arrow on the edge of the view points to the nearest
+  group, with its strength and distance.
+- The lead pipper stays an Assist feature.

@@ -160,6 +160,7 @@ export class SettingsScreen implements Screen {
     const on = (b: boolean) => (b ? 'ON' : 'OFF');
     const items = () => [
       { label: `MODE: ${st.assist ? 'ASSIST' : 'AUTHENTIC'}`, act: () => { st.assist = !st.assist; this.refresh(); } },
+      { label: `ENEMY MARKERS: ${on(st.markers)}`, act: () => { st.markers = !st.markers; this.refresh(); } },
       { label: `AMMO BAR: ${on(st.ammoBar)}`, act: () => { st.ammoBar = !st.ammoBar; this.refresh(); } },
       { label: `AUTO-RUDDER: ${on(st.autoRudder)}`, act: () => { st.autoRudder = !st.autoRudder; this.refresh(); } },
       { label: `TILT CONTROL: ${on(st.tilt)}`, act: () => { void this.tilt(); } },
@@ -170,7 +171,7 @@ export class SettingsScreen implements Screen {
       { label: `PANEL: ${st.slimPanel ? 'SLIM' : 'FULL'}`, act: () => { st.slimPanel = !st.slimPanel; this.refresh(); } },
       { label: 'DONE', act: () => this.next() },
     ];
-    this.menu = new Menu(items(), 70, 50, 180, 14);
+    this.menu = new Menu(items(), 70, 44, 180, 14);
     this.refresh = () => { app.saveSettings(); const sel = this.menu.sel; this.menu.items = items(); this.menu.sel = sel; };
   }
   private refresh: () => void;
@@ -189,7 +190,7 @@ export class SettingsScreen implements Screen {
     fillRect(fb, 0, 0, W, 256, C.SMOKE);
     panel(fb, 50, 24, 220, 200);
     this.menu.draw(fb, 'SETTINGS');
-    drawTextCentered(fb, 'ASSIST: LEAD MARKER, SPOTTING MARKERS, LANDING AIDS, ONE START BUTTON', 160, 230, C.CHALK, 'tiny');
+    drawTextCentered(fb, 'ASSIST: LEAD MARKER, LANDING AIDS, ONE START BUTTON', 160, 230, C.CHALK, 'tiny');
     drawTextCentered(fb, 'KEYS: ARROWS/WASD STICK, SPACE FIRE, +/- THROTTLE, G GEAR, F FLAPS, P PADLOCK,', 160, 238, C.GREY_L, 'tiny');
     drawTextCentered(fb, 'B LOOK BACK, T TALLY-HO, 1-4 ORDERS, M MAP, I START, J BAIL OUT, [ ] TIME, ` DEBUG', 160, 245, C.GREY_L, 'tiny');
   }

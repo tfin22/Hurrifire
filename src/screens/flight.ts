@@ -1,6 +1,8 @@
 // The in-flight screen: cockpit and external views, controls → simulation,
 // G and buffet effects, time compression, the HUD and debug readouts.
 
+import { drawSpotting } from './spotting';
+import { WorldMap } from '../content/world/map';
 import type { App, Screen } from '../app';
 import { clamp, DEG, MPS_TO_MPH, M_TO_FT, Quat, Vec3 } from '../core/math';
 import { Rng } from '../core/rng';
@@ -603,26 +605,19 @@ export class FlightScreen implements Screen {
 
   /** Assist mode: lead indicator on the nearest target and small markers on enemies in range. */
   protected drawAssist(fb: FrameBuffer): void {
-    if (!this.app.settings.assist) return;
     const me = this.player;
     const cam = this.cam;
+    fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);
+    if (this.app.settings.markers) drawSpotting(fb, cam, this.world, me, this.opts.terrain instanceof WorldMap ? this.opts.terrain : null);
+    fb.resetClip();
+    if (!this.app.settings.assist) return;
     fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);
     const out = { x: 0, y: 0, z: 0 };
     let nearest: Plane | null = null, nd = Infinity;
     for (const q of this.world.planes) {
       if (q === me || !q.alive || q.side === me.side) continue;
       const d = q.pos.distTo(me.pos);
-      if (d > TUNING.assist.markerRange) continue;
       if (d < nd) { nd = d; nearest = q; }
-      if (!cam.project(q.pos, out)) continue;
-      const r = Math.max(3, (cam.f * q.type.span * 0.5) / out.z + 2);
-      // Corner brackets.
-      const x0 = out.x - r, x1 = out.x + r, y0 = out.y - r, y1 = out.y + r;
-      for (const [x, y, dx, dy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]] as const) {
-        line(fb, x, y, x + dx * 2, y, C.FIRE_R);
-        line(fb, x, y, x, y + dy * 2, C.FIRE_R);
-      }
-      if (d < 1500) drawText(fb, `${Math.round(d * 1.0936 / 10) * 10}`, x1 + 2, y0, C.FIRE_R, 'tiny');
     }
     this.drawLandingAids(fb);
     fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);

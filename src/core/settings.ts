@@ -16,6 +16,8 @@ export interface Settings {
   slimPanel: boolean;
   convergenceYards: number;
   sightSpanFt: number;
+  /** Enemy markers: formations far off, individual aircraft close in, an arrow to the nearest. */
+  markers: boolean;
 }
 
 const KEY = 'scramble.settings.v1';
@@ -32,6 +34,7 @@ export const defaultSettings = (): Settings => ({
   slimPanel: false,
   convergenceYards: 300,
   sightSpanFt: 32,
+  markers: true,
 });
 
 export function loadSettings(): Settings {

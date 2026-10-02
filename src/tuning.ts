@@ -303,6 +303,17 @@ export const TUNING = {
     markerRange: 4000,
   },
 
+  spotting: {
+    /** Formations are marked out to this range (m); reported raids to twice it. */
+    groupRange: 45000,
+    /** Aircraft this close to one another are one formation (m). */
+    groupJoin: 2500,
+    /** Inside this range a formation breaks into individually marked aircraft (m). */
+    individualRange: 4500,
+    /** Type labels on at most this many aircraft at once. */
+    maxLabels: 6,
+  },
+
   effects: {
     /** G at which greying starts, and the G-seconds of reserve before full blackout. */
     greyStartG: 4.3,
