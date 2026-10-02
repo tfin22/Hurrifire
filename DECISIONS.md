@@ -555,3 +555,10 @@ side of the screen to the other without being visible." Three bugs:
 The arrow also stays on one group instead of hopping between two at
 similar range, and its label gives the clock position as a pilot would
 call it: "1 FIGHTER 0.9 MI 8 O'CLOCK HIGH".
+
+## Music level
+
+The music now plays about 3 dB quieter (channel level 0.7 instead of 1.0),
+so it sits under the sound effects rather than competing with them. The
+effects, and the bell and phone that cut through the menu music, are
+unchanged.
