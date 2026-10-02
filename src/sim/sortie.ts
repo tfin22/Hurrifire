@@ -22,6 +22,7 @@ import { assessClaims, Claim, Engagement, tally } from './claims';
 import { CloudField } from './clouds';
 import { SectorController } from './controller';
 import { damageFraction } from './damage';
+import { DockingComputer } from './docking';
 import { Plane } from './plane';
 import { Raid, RaidSpec } from './raid';
 import { dayOfYear, sunDirection } from './sun';
@@ -176,6 +177,8 @@ export class Sortie {
   /** The airfield the controller last gave a homing to (shown on screen). */
   homing: Homing | null = null;
   private homingDue = -1;
+  /** Jump to final approach after a homing, and land her (Assist/Arcade). */
+  readonly docking = new DockingComputer();
   /** Shared map state as it was at the start, so a replay can begin from the same place. */
   private readonly startState: { craters: Airfield['craters'][]; damaged: number[]; balloonsDown: boolean[] };
   private readonly wrecked: { kind: string }[] = [];
@@ -334,6 +337,7 @@ export class Sortie {
         if (fs.engine === 'off') { this.startAllT = 0; }
         break;
       case 'tallyHo': this.tallyHo(); break;
+      case 'jumpHome': this.jumpHome(); break;
       case 'homing':
         if (this.homingDue >= 0 || fs.onGround) break;
         this.controller.say(this.time, RT.homingReq(this.spec.squadron, this.controller.callsign), 'player', false);
@@ -419,7 +423,7 @@ export class Sortie {
     const dt = TUNING.sim.dt;
     this.startup(dt);
     const w = this.world;
-    w.step(f);
+    w.step(this.docking.control(this.player, f));
     for (const s of this.ships) {
       if (s.sunk) continue;
       s.pos.x += Math.sin(s.heading) * 4 * dt;
@@ -438,6 +442,15 @@ export class Sortie {
     if (this.homingDue >= 0 && this.time >= this.homingDue) this.giveHoming();
     this.trackSightings();
     this.updatePhase();
+  }
+
+  /** The docking computer: straight onto finals for the homing field. */
+  private jumpHome(): void {
+    const why = DockingComputer.refuse(this.world, this.player, this.homing);
+    if (why) { this.prompts.push(why); return; }
+    this.docking.engage(this.player, this.homing!);
+    this.controller.say(this.time, `${this.spec.squadron} Leader: Coming home.`, 'player', false);
+    this.prompts.push('ON FINALS - STICK TO TAKE OVER');
   }
 
   /** The controller's answer to a homing request: course, distance, landing direction. */
@@ -613,7 +626,7 @@ export class Sortie {
       date: `${this.spec.day} ${MONTHS[this.spec.month - 1]} 1940`,
       aircraft: AIRCRAFT[this.spec.playerType].name,
       durationMin: Math.round(this.time / 60),
-      takeoffDelay: this.airborneAt >= 0 ? Math.round(this.airborneAt) : -1,
+      takeoffDelay: this.spec.start === 'readiness' && this.airborneAt >= 0 ? Math.round(this.airborneAt) : -1,
       claims,
       roundsFired: p.armament.fired,
       damageTaken: damageFraction(p.damage),

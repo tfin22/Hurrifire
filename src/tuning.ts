@@ -345,6 +345,17 @@ export const TUNING = {
     startAbove: 800,
   },
 
+  /** The docking computer: jump to final approach after a homing. */
+  docking: {
+    /** Only with no enemy aircraft within this range (m). */
+    clearOfEnemy: 9000,
+    /** Length of the final approach it puts you on (m), and how far into the run it touches down. */
+    finalM: 3000,
+    touchdownIn: 80,
+    /** Stick deflection that takes control back. */
+    takeOver: 0.35,
+  },
+
   targets: {
     /** Big targets: enemies are drawn and hit this much larger at range... */
     scale: 2.0,

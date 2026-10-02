@@ -505,3 +505,28 @@ sampled) and still crushed to 8 bits:
 - To do the cross-fade and the drone, a Paula channel can now carry two
   looped layers (engine power and overrun; wind and drone). There are still
   four channels, and one-shots still take a channel over as before.
+
+## The docking computer (jump home)
+
+In Assist and Arcade, once the controller has given a homing, a JUMP HOME
+button (key N) appears:
+
+- It puts you on a 3 km final approach to the homing field, lined up on
+  the landing direction into the wind, wheels and flaps down, at approach
+  speed.
+- The approach autopilot (the same one the AI wingmen use) then flies the
+  glide path, flares, three-points it, brakes and switches off. The sortie
+  ends as a normal landing at that field, with no reprimand.
+- Moving the stick (more than about a third of its travel) hands control
+  back at any point. AUTOLAND flashes in the view while it's flying.
+- It refuses without a homing, on the ground, or with any enemy aircraft
+  within 9 km. You have to get clear of the fight first.
+- It's an instant jump. No fuel or time is charged for the trip home, and
+  the raid carries on without you.
+- It works the same for the 109 on the other side, to Marquise or
+  Calais-Marck.
+- The jump is a recorded command and the autopilot runs inside the
+  simulation, so a replay shows the same jump and the same landing.
+
+Also: the debrief no longer says "Airborne 0 seconds after the scramble"
+for sorties that start in the air (Quick Combat and Arcade).

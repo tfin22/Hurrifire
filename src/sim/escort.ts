@@ -26,6 +26,7 @@ import { assessClaims, Engagement, tally } from './claims';
 import { CloudField } from './clouds';
 import type { RTMessage } from './controller';
 import { damageFraction } from './damage';
+import { DockingComputer } from './docking';
 import type { Plane } from './plane';
 import { Raid, RaidSpec } from './raid';
 import type { Homing, PilotOutcome, SortieResult } from './sortie';
@@ -97,6 +98,8 @@ export class EscortSortie {
   /** The field the Gefechtsstand last gave a bearing to (shown on screen). */
   homing: Homing | null = null;
   private homingDue = -1;
+  /** Jump to final approach after a homing, and land her (Assist/Arcade). */
+  readonly docking = new DockingComputer();
   private seen = new Map<number, Engagement['lastSeen']>();
   private readonly targetName: string;
 
@@ -185,6 +188,14 @@ export class EscortSortie {
       case 'tallyHo': case 'order1': this.attack(); break;
       case 'order2': this.attack(); break;
       case 'order3': this.giveAll('follow'); this.controller.say(this.time, LW_RT.follow(this.spec.colour + ' 1'), 'player'); break;
+      case 'jumpHome': {
+        const why = DockingComputer.refuse(this.world, this.player, this.homing);
+        if (why) { this.prompts.push(why); break; }
+        this.docking.engage(this.player, this.homing!);
+        this.controller.say(this.time, `${this.spec.colour} 1: Going home.`, 'player');
+        this.prompts.push('ON FINALS - STICK TO TAKE OVER');
+        break;
+      }
       case 'homing':
         if (this.homingDue >= 0 || this.player.fs.onGround) break;
         this.controller.say(this.time, LW_RT.homingReq(this.spec.colour + ' 1'), 'player');
@@ -210,7 +221,7 @@ export class EscortSortie {
     if (f?.cmds) for (const c of f.cmds) this.command(c);
     const w = this.world;
     const dt = TUNING.sim.dt;
-    w.step(f);
+    w.step(this.docking.control(this.player, f));
     this.sendRaf();
     if (w.tick % 250 === 0) this.vectorRaf();
     this.radio();
