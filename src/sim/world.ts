@@ -68,7 +68,7 @@ export type WorldEventKind =
   | 'hit' | 'playerHit' | 'shotDown' | 'bail' | 'chuteLanded' | 'crash' | 'explode' | 'wingOff'
   | 'fire' | 'glycol' | 'oil' | 'pilotWounded' | 'pilotKilled' | 'crewHit' | 'gearDamaged' | 'flapsDamaged'
   | 'landed' | 'ditched' | 'bombsGone' | 'jettison' | 'bounce' | 'touchdown' | 'groundLoop' | 'noseOver'
-  | 'obstacle' | 'liftoff' | 'chuteOpen' | 'engineStart' | 'engineCough';
+  | 'obstacle' | 'liftoff' | 'chuteOpen' | 'engineStart' | 'engineCough' | 'engineStop';
 
 export interface WorldEvent {
   kind: WorldEventKind;
@@ -314,7 +314,7 @@ export class World {
       }
     }
     const speed = Math.hypot(fs.vel.x, fs.vel.z);
-    if (!fs.onGround || fs.stopped || (speed < 0.6 && fs.throttle < 0.15 && p.landing.result)) {
+    if (!fs.onGround || fs.stopped || (speed < 0.6 && (fs.throttle < 0.15 || fs.engine === 'off') && p.landing.result)) {
       if ((fs.stopped || speed < 0.6) && p.status === 'flying' && fs.onGround) this.stopOnGround(p);
       return;
     }
@@ -379,6 +379,8 @@ export class World {
         c.pitch = player.pitch; c.roll = player.roll; c.yaw = player.yaw;
         c.throttle = player.throttle; c.boost = player.boost; c.brake = player.brake;
         p.trigger = player.fire;
+        // Switched off after landing: on the brakes until she stops.
+        if (p.fs.onGround && p.landing.result && p.fs.engine === 'off') { c.brake = true; c.throttle = 0; }
       } else if (p.brain && p.status === 'flying') {
         p.brain.update(p, this.ctx);
       }
@@ -621,6 +623,13 @@ export class World {
         break;
       case 'bailOut':
         if (!fs.onGround && fs.agl > 120) this.bailOut(p);
+        break;
+      case 'engineOff':
+        // Down after a landing: switch off, and she brakes to a stop.
+        if (fs.onGround && p.landing.result && (fs.engine === 'running' || fs.engine === 'coughing')) {
+          fs.engine = 'off';
+          this.emit({ kind: 'engineStop', planeId: p.id }, false);
+        }
         break;
     }
   }

@@ -16,6 +16,8 @@ export const LW_RT = {
   redLight: 'The red light is on. Time to go home.',
   overFrance: 'French coast. Home.',
   noFuel: 'Engine quiet. Glide for the coast.',
+  homingReq: (who: string) => `${who}: Request a bearing home.`,
+  homing: (hdg: number, field: string, km: number) => `Fly ${String(hdg).padStart(3, '0')} for ${field}, ${km} kilometres.`,
 };
 
 export const LW_PLACES = {

@@ -8,8 +8,8 @@ import { M_TO_FT, Vec3 } from '../core/math';
 import { Rng } from '../core/rng';
 import { AircraftId, AIRCRAFT } from '../content/aircraft';
 import { ASSEMBLY, RAID_TEMPLATES, TARGETS } from '../content/raids';
-import { CAUSE, LANDING_LINES, logClaims, logEngaged, logNoContact, LOSS_LINES, Phase } from '../content/text/briefing';
-import { RT, clockOf } from '../content/text/rt';
+import { CAUSE, WRITE_UP, LANDING_LINES, logClaims, logEngaged, logNoContact, LOSS_LINES, Phase } from '../content/text/briefing';
+import { RT, clockOf, sayHeading, sayMiles } from '../content/text/rt';
 import { describePlace, describeRaid, distanceToEnglishCoast, isFrance, placeName } from '../content/world/describe';
 import { Airfield, lonLatToXZ, WorldMap } from '../content/world/map';
 import { WorldObjects } from '../content/world/objects';
@@ -74,6 +74,8 @@ export interface PilotOutcome {
   aircraft: 'fine' | 'minor' | 'damaged' | 'repairable' | 'writeOff';
   place: string;
   line: string;
+  /** Landed a sound aircraft away from an airfield without cause: the reprimand. */
+  writtenUp?: string;
 }
 
 export interface SortieResult {
@@ -103,6 +105,27 @@ export interface SortieResult {
   airfieldHits: Record<string, number>;
 }
 
+/** A homing given over the R/T: the field, and which way to land on it. */
+export interface Homing {
+  field: Airfield;
+  /** Landing direction, into the wind (rad). */
+  landDir: number;
+}
+
+/** The nearest friendly field (or of a list), and its landing direction into the wind. */
+export function homingTo(map: WorldMap, pos: Vec3, raf: boolean, wind: Vec3, only?: string[]): Homing {
+  const list = map.airfields.filter((a) => (only ? only.includes(a.name) : raf === (a.kind !== 'luftwaffe')));
+  let field = list[0], bd = Infinity;
+  for (const a of list) {
+    const d = Math.hypot(a.pos.x - pos.x, a.pos.z - pos.z);
+    if (d < bd) { bd = d; field = a; }
+  }
+  const d = (field.dir * Math.PI) / 180;
+  // Land into the wind (the wind vector is where the air is going).
+  const landDir = Math.sin(d) * wind.x + Math.cos(d) * wind.z > 0 ? d + Math.PI : d;
+  return { field, landDir: ((landDir % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) };
+}
+
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export class Sortie {
@@ -128,6 +151,9 @@ export class Sortie {
   /** Messages for the screen (start-up prompts etc.). */
   prompts: string[] = [];
   result: SortieResult | null = null;
+  /** The airfield the controller last gave a homing to (shown on screen). */
+  homing: Homing | null = null;
+  private homingDue = -1;
   /** Shared map state as it was at the start, so a replay can begin from the same place. */
   private readonly startState: { craters: Airfield['craters'][]; damaged: number[]; balloonsDown: boolean[] };
   private readonly wrecked: { kind: string }[] = [];
@@ -286,6 +312,11 @@ export class Sortie {
         if (fs.engine === 'off') { this.startAllT = 0; }
         break;
       case 'tallyHo': this.tallyHo(); break;
+      case 'homing':
+        if (this.homingDue >= 0 || fs.onGround) break;
+        this.controller.say(this.time, RT.homingReq(this.spec.squadron, this.controller.callsign), 'player', false);
+        this.homingDue = this.time + TUNING.sortie.homingDelay;
+        break;
       case 'order1': case 'order2': case 'order3': case 'order4':
         this.order(c);
         break;
@@ -382,8 +413,21 @@ export class Sortie {
       if (f2.contacts.ids().length && !this.engaged) this.autoTally(L);
     }
     if (this.world.tick % 25 === 0) this.controller.step(this.view());
+    if (this.homingDue >= 0 && this.time >= this.homingDue) this.giveHoming();
     this.trackSightings();
     this.updatePhase();
+  }
+
+  /** The controller's answer to a homing request: course, distance, landing direction. */
+  private giveHoming(): void {
+    this.homingDue = -1;
+    const me = this.player.pos;
+    const h = (this.homing = homingTo(this.map, me, true, this.world.weather.wind));
+    const f = h.field.pos;
+    const brg = Math.atan2(f.x - me.x, f.z - me.z);
+    const d = Math.hypot(f.x - me.x, f.z - me.z);
+    const deg = (r: number) => (r * 180) / Math.PI;
+    this.controller.say(this.time, RT.homing(this.spec.squadron, this.controller.callsign, sayHeading(deg(brg)), h.field.name, sayMiles(d), sayHeading(deg(h.landDir))), 'controller', true);
   }
 
   private autoTally(L: Plane): void {
@@ -575,6 +619,15 @@ export class Sortie {
     return describePlace(this.map, r.plot.x, r.plot.z).replace(/^(over|near|off) /, '');
   }
 
+  /** Down in a field with nothing wrong: sound aircraft, fuel in the tank, pilot unhurt. */
+  private needlessLanding(): boolean {
+    const p = this.player;
+    const r = p.landing.result;
+    return (!r || r.aircraft === 'fine') && (r?.pilot ?? 'fine') === 'fine' && damageFraction(p.damage) < 0.05
+      && p.damage.pilot !== 'wounded' && p.damage.fire <= 0 && p.damage.glycol <= 0 && p.damage.oil <= 0.3
+      && p.fs.engine !== 'seized' && p.fs.engine !== 'dead' && p.fs.fuel > p.type.fuelCapacity * TUNING.sortie.writeUpFuel;
+  }
+
   private rescued(pos: Vec3): boolean {
     const d = distanceToEnglishCoast(this.map, pos.x, pos.z);
     const p = d < 5000 ? 0.85 : d < 15000 ? 0.6 : d < 25000 ? 0.3 : 0.12;
@@ -615,7 +668,12 @@ export class Sortie {
     if (kind === 'belly') return { kind: 'belly', pilot, aircraft, place: pl, line: LANDING_LINES.belly(pl, surfName, cause) };
     if (kind === 'crashSurvived') return { kind: 'crashLanded', pilot, aircraft, place: pl, line: LANDING_LINES.crashSurvived(pl, surfName, cause) };
     if (kind === 'noseOver') return { kind: onAirfield ? 'landed' : 'forced', pilot, aircraft, place: pl, line: LANDING_LINES.noseOver(pl, surfName, cause) };
-    if (!onAirfield) return { kind: 'forced', pilot, aircraft, place: pl, line: LANDING_LINES.forced(pl, surfName, cause) };
+    if (isFrance(p.pos.x, p.pos.z)) return { kind: 'pow', pilot: 'lost', aircraft: 'writeOff', place: pl, line: 'Came down in France. Taken prisoner.' };
+    if (!onAirfield) {
+      const out: PilotOutcome = { kind: 'forced', pilot, aircraft, place: pl, line: LANDING_LINES.forced(pl, surfName, cause) };
+      if (this.needlessLanding()) out.writtenUp = WRITE_UP.raf(p.type.name);
+      return out;
+    }
     const ln = LANDING_LINES[kind] ?? LANDING_LINES.roll;
     return { kind: 'landed', pilot, aircraft, place: pl, line: ln(pl, surfName, cause) };
   }

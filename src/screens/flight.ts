@@ -1,7 +1,8 @@
 // The in-flight screen: cockpit and external views, controls → simulation,
 // G and buffet effects, time compression, the HUD and debug readouts.
 
-import { drawSpotting } from './spotting';
+import { drawHoming, drawSpotting } from './spotting';
+import type { Homing } from '../sim/sortie';
 import { WorldMap } from '../content/world/map';
 import type { App, Screen } from '../app';
 import { clamp, DEG, MPS_TO_MPH, M_TO_FT, Quat, Vec3 } from '../core/math';
@@ -95,12 +96,14 @@ export class FlightScreen implements Screen {
     if (s.consume('flaps')) this.cmd('flaps');
     if (s.consume('gear')) this.gearAction();
     if (s.consume('bailOut')) this.requestBail();
+    if (s.consume('engineOff')) this.cmd('engineOff');
     if (this.debug) this.debugTaps();
     this.consumeEvents();
     if (s.lookBack && this.app.input.roll !== 0) this.lookSide = this.app.input.roll > 0 ? 1 : -1;
     this.updateSound();
   }
 
+  private switchOffHint = false;
   private lastFired = 0;
   private shotAt = -1e9;
   private lastGear = 0;
@@ -412,6 +415,13 @@ export class FlightScreen implements Screen {
     this.recording.push(f);
     this.stepSim(f);
     this.afterTick();
+    // Rolling out after a landing: say how to finish.
+    const fs = this.player.fs;
+    if (!this.switchOffHint && this.canSwitchOff() && Math.hypot(fs.vel.x, fs.vel.z) < 25) {
+      this.switchOffHint = true;
+      this.flashMessage('ENGINE OFF TO FINISH', 3);
+    }
+    if (!this.player.fs.onGround) this.switchOffHint = false;
     if (this.messageT > 0) this.messageT -= TUNING.sim.dt;
     if (this.hitFlash > 0) this.hitFlash -= TUNING.sim.dt;
     if (this.woundFlash > 0) this.woundFlash -= TUNING.sim.dt * 0.7;
@@ -610,6 +620,8 @@ export class FlightScreen implements Screen {
     const cam = this.cam;
     fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);
     if (this.app.settings.markers) drawSpotting(fb, cam, this.world, me, this.opts.terrain instanceof WorldMap ? this.opts.terrain : null);
+    const h = this.homing();
+    if (h && !me.fs.onGround) drawHoming(fb, cam, me, h);
     fb.resetClip();
     if (!this.app.settings.assist) return;
     fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);
@@ -809,8 +821,20 @@ export class FlightScreen implements Screen {
     const p = this.player;
     const inTrouble = p.status === 'wreck' || p.damage.fire > 0 || fs.engine !== 'running' || damageFraction(p.damage) > 0.15 || p.damage.pilot === 'wounded';
     if (inTrouble && !fs.onGround && !this.playerChute() && fs.agl > 150) b.push({ action: 'bailOut', label: p.damage.fire > 0 ? `BAIL OUT ${Math.ceil(fireTimeLeft(p.damage))}` : 'BAIL OUT' });
+    if (this.canSwitchOff()) b.unshift({ action: 'engineOff', label: 'ENGINE OFF', lit: true });
     b.push({ action: 'timeUp', label: `TIME x${TUNING.sim.timeCompression[this.timeIdx]}`, lit: this.timeIdx > 0 });
     if (this.timeIdx > 0) b.push({ action: 'timeDown', label: 'TIME -' });
     return b;
+  }
+
+  /** The field from the last R/T homing, if any (a sortie has the R/T). */
+  protected homing(): Homing | null {
+    return null;
+  }
+
+  /** Down after a landing with the engine still running. */
+  protected canSwitchOff(): boolean {
+    const p = this.player, fs = p.fs;
+    return fs.onGround && !!p.landing.result && p.status === 'flying' && (fs.engine === 'running' || fs.engine === 'coughing');
   }
 }

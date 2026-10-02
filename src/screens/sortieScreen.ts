@@ -13,7 +13,7 @@ import { fillRect, pset } from '../render/raster';
 import { makeWorldLayer, Plume } from '../render/worldLayer';
 import { lonLatToXZ } from '../content/world/map';
 import { Vec3 } from '../core/math';
-import type { SortieResult } from '../sim/sortie';
+import type { Homing, SortieResult } from '../sim/sortie';
 import type { World } from '../sim/world';
 import type { WorldMap } from '../content/world/map';
 import type { WorldObjects } from '../content/world/objects';
@@ -37,6 +37,8 @@ export interface FlownSortie {
   readonly orderButtons?: ContextButton[];
   /** Put shared map state back as it was at the start (for a replay). */
   rewind(): void;
+  /** The field given in the last homing (marked on screen). */
+  readonly homing?: Homing | null;
 }
 import { TUNING } from '../tuning';
 import { FlightScreen } from './flight';
@@ -65,6 +67,10 @@ export class SortieScreen extends FlightScreen {
     app.input.throttle = sortie.spec.start === 'air' ? 0.85 : 0;
   }
 
+  protected homing(): Homing | null {
+    return this.sortie.homing ?? null;
+  }
+
   protected stepSim(f: ControlFrame): void {
     this.sortie.step(f);
   }
@@ -74,6 +80,7 @@ export class SortieScreen extends FlightScreen {
     if (s.consume('map')) this.mapOpen = !this.mapOpen;
     if (this.mapOpen && s.taps.length) { this.mapOpen = false; s.taps.length = 0; }
     if (s.consume('tallyHo')) this.cmd('tallyHo');
+    if (s.consume('homing')) this.cmd('homing');
     for (const o of ['order1', 'order2', 'order3', 'order4'] as const) if (s.consume(o)) this.cmd(o);
     if (s.consume('start')) this.startPress();
     if (s.consume('primer')) this.cmd('primer');
@@ -167,6 +174,10 @@ export class SortieScreen extends FlightScreen {
       return [{ action: 'primer', label: 'PRIMER' }, { action: 'mags', label: 'MAGS' }, { action: 'starter', label: 'STARTER' }];
     }
     const b = super.contextButtons();
+    // Ask the controller the way home: not in the middle of a fight.
+    const me = this.player;
+    const fighting = this.world.planes.some((q) => q.side !== me.side && q.alive && q.pos.distTo(me.pos) < TUNING.sim.compressionDropRange);
+    if (!fs.onGround && !fighting && me.status === 'flying') b.push({ action: 'homing', label: 'HOMING' });
     if (so.engaged && so.spec.leading) {
       b.unshift(...(so.orderButtons ?? [
         { action: 'order1', label: 'BOMBERS' }, { action: 'order2', label: 'ESCORT' },

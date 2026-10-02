@@ -98,6 +98,12 @@ export const LANDING_LINES: Record<string, (place: string, surface: string, caus
   bailSeaRescued: (place, _s, cause) => `${cause}Baled out over the Channel off ${place}. Picked up after an hour in the water.`,
 };
 
+/** Put a sound aircraft down in a field for no good reason: the CO is not pleased. */
+export const WRITE_UP = {
+  raf: (type: string) => `The CO had you on the carpet: a serviceable ${type} left in a farmer's field while the squadron is short of aircraft. You have been written up.`,
+  lw: 'The Staffelkapitan is not amused: a sound aircraft put down in a field. A reprimand goes on your record.',
+};
+
 export const LOSS_LINES = {
   lostSea: (name: string, place: string) => `${name} baled out over the Channel off ${place}. Not picked up.`,
   lostCrash: (name: string, place: string) => `${name} was killed when his aircraft crashed near ${place}.`,

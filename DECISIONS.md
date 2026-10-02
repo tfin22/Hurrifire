@@ -377,3 +377,34 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   Spitfire's starting speed. Every raid's speed is now capped at its
   slowest bomber's formation cruise (Ju 87 170 mph, He 111 190, Do 17 197,
   Ju 88 212, Bf 110 257), and the Stuka raid flies below 10,500 ft.
+
+## Finding home, and finishing in a field
+
+- **Airfields from the air.** The ground's detail polygons (perimeter track,
+  craters) only draw below about 5,000 ft, and the grass square is the same
+  green as the pasture round it, so fields vanished from height. Each
+  airfield is now also drawn as a ground marking at any range: the grass
+  square, a grey perimeter track and a pale worn landing run along the main
+  direction, with its bomb craters. The track and run are wider than life
+  so they read at a distance. These are drawn straight after the terrain,
+  before anything that stands on it.
+- **Homing over the R/T.** A HOMING button (key V) asks the controller for a
+  course to the nearest friendly field. He answers after three seconds with
+  the course, the distance and the landing direction into the wind. The 109
+  pilot gets a bearing to Marquise or Calais-Marck in kilometres. The field
+  is then marked like a raid: its name, distance and landing direction,
+  and a line down the landing run with an arrow the way to land. Off
+  screen, an arrow points to it from the edge of the view. It shows whether
+  or not enemy markers are switched on, because the player asked for it.
+  The button is hidden when enemies are within visual range.
+- **Switching off.** A landing only ended when the aircraft stopped with
+  the throttle closed, so rolling about a field with some power on went on
+  for ever. After any landing an ENGINE OFF button (key X) appears, with a
+  prompt once she slows. Switching off puts the brakes on, and when she
+  stops the sortie ends.
+- **Written up.** Putting a sound aircraft down in a field is now a
+  reprimand. That means no damage, the pilot unhurt, the engine sound and
+  more than 6% fuel in the tank. The debrief says so in red, and in the
+  campaign each reprimand puts promotion back by three sorties. Any forced
+  landing in a field also costs the squadron that aircraft for a day while
+  it's fetched back. An RAF pilot who lands in France is taken prisoner.

@@ -13,6 +13,7 @@ import type { FrameBuffer } from '../render/framebuffer';
 import { C } from '../render/palette';
 import { fillConvex, line, rectOutline } from '../render/raster';
 import type { Plane } from '../sim/plane';
+import type { Homing } from '../sim/sortie';
 import type { World } from '../sim/world';
 import { TUNING } from '../tuning';
 
@@ -144,13 +145,60 @@ export function drawSpotting(fb: FrameBuffer, cam: Camera, world: World, me: Pla
     label(fb, cam, strength(g), cx, cy - h / 2 - 15, col, true);
     label(fb, cam, `${placeOf(map, g.pos)}  ${(g.dist / M_PER_MILE).toFixed(g.dist < 16000 ? 1 : 0)} MI`, cx, cy - h / 2 - 8, col, true);
   }
-  if (offscreen) drawPointer(fb, cam, me, offscreen);
+  if (offscreen) {
+    const g = offscreen;
+    const n = g.reported ? `RAID ${g.estimate}+` : strength(g).split(' + ')[0];
+    drawPointer(fb, cam, g.pos, `${n} ${miles(g.dist)} MI`, g.reported ? C.FIRE_Y : C.FIRE_R);
+  }
 }
 
-/** An arrow at the edge of the view towards a group out of sight. */
-function drawPointer(fb: FrameBuffer, cam: Camera, me: Plane, g: Group): void {
+const miles = (d: number) => (d / M_PER_MILE).toFixed(d < 16000 ? 1 : 0);
+
+/**
+ * The field from a homing: its name and distance, and a line down the
+ * landing run with an arrow the way to land (into the wind). Off screen, an
+ * arrow at the edge of the view.
+ */
+export function drawHoming(fb: FrameBuffer, cam: Camera, me: Plane, h: Homing): void {
+  const f = h.field;
+  const col = C.SIGHT;
+  const dx = Math.sin(h.landDir), dz = Math.cos(h.landDir);
+  const half = f.len / 2;
+  const y = f.pos.y + 2;
+  const a = new Vec3(f.pos.x - dx * half, y, f.pos.z - dz * half);
+  const b = new Vec3(f.pos.x + dx * half, y, f.pos.z + dz * half);
+  const d = Math.hypot(f.pos.x - me.pos.x, f.pos.z - me.pos.z);
+  const dist = me.side === 'lw' ? `${(d / 1000).toFixed(d < 10000 ? 1 : 0)} KM` : `${miles(d)} MI`;
+  const pc = { x: 0, y: 0, z: 0 }, pa = { x: 0, y: 0, z: 0 }, pb = { x: 0, y: 0, z: 0 };
+  const inView = cam.project(f.pos, pc) && pc.x > cam.vx0 + 6 && pc.x < cam.vx1 - 6 && pc.y > cam.vy0 + 6 && pc.y < cam.vy1 - 6;
+  if (!inView) {
+    drawPointer(fb, cam, f.pos, `${f.name.toUpperCase()} ${dist}`, col);
+    return;
+  }
+  if (cam.project(a, pa) && cam.project(b, pb)) {
+    // The landing run, doubled up to read at a distance, and its arrowhead.
+    line(fb, pa.x, pa.y, pb.x, pb.y, col);
+    line(fb, pa.x, pa.y + 1, pb.x, pb.y + 1, col);
+    const ex = pb.x - pa.x, ey = pb.y - pa.y, l = Math.hypot(ex, ey);
+    if (l > 6) {
+      const ux = ex / l, uy = ey / l, s = Math.min(6, l * 0.4);
+      line(fb, pb.x, pb.y, pb.x - ux * s - uy * s * 0.6, pb.y - uy * s + ux * s * 0.6, col);
+      line(fb, pb.x, pb.y, pb.x - ux * s + uy * s * 0.6, pb.y - uy * s - ux * s * 0.6, col);
+    }
+  }
+  // A diamond on the field so it can be found even when the run is a few pixels long.
+  const r = 4;
+  line(fb, pc.x - r, pc.y, pc.x, pc.y - r, col); line(fb, pc.x, pc.y - r, pc.x + r, pc.y, col);
+  line(fb, pc.x + r, pc.y, pc.x, pc.y + r, col); line(fb, pc.x, pc.y + r, pc.x - r, pc.y, col);
+  const land = String(Math.round(((h.landDir * 180) / Math.PI + 360) % 360)).padStart(3, '0');
+  label(fb, cam, f.name.toUpperCase(), pc.x, pc.y - 18, col, true);
+  label(fb, cam, `${dist}  LAND ${land}`, pc.x, pc.y - 11, col, true);
+}
+
+/** An arrow at the edge of the view towards something out of sight. */
+function drawPointer(fb: FrameBuffer, cam: Camera, pos: Vec3, text: string, col: number): void {
   const t = [0, 0, 0];
-  cam.toCam(g.pos.x, g.pos.y, g.pos.z, t);
+  cam.toCam(pos.x, pos.y, pos.z, t);
   // Screen-space direction (y down); straight behind reads as "below".
   let dx = t[0], dy = -t[1];
   if (t[2] < 0) { dx = -dx; dy = -dy; }
@@ -161,15 +209,11 @@ function drawPointer(fb: FrameBuffer, cam: Camera, me: Plane, g: Group): void {
   const hw = (cam.vx1 - cam.vx0) / 2 - 10, hh = (cam.vy1 - cam.vy0) / 2 - 10;
   const k = Math.min(hw / Math.max(1e-6, Math.abs(dx)), hh / Math.max(1e-6, Math.abs(dy)));
   const px = cx + dx * k, py = cy + dy * k;
-  const col = g.reported ? C.FIRE_Y : C.FIRE_R;
   const s = 6;
   fillConvex(fb, [px + dx * s, px - dx * s - dy * s * 0.7, px - dx * s + dy * s * 0.7], [py + dy * s, py - dy * s + dx * s * 0.7, py - dy * s - dx * s * 0.7], 3, col);
-  const n = g.reported ? `RAID ${g.estimate}+` : strength(g).split(' + ')[0];
   // The label goes beside the arrow on the inside, clear of the point.
-  const text = `${n} ${(g.dist / M_PER_MILE).toFixed(g.dist < 16000 ? 1 : 0)} MI`;
   const tw = textWidth(text, 'tiny');
   const lx = Math.abs(dx) > Math.abs(dy) ? px - Math.sign(dx) * (tw / 2 + 10) : px;
   const ly = Math.abs(dx) > Math.abs(dy) ? py - 3 : py - Math.sign(dy) * 12 - 3;
   label(fb, cam, text, lx, ly, col, true);
-  void me;
 }

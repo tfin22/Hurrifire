@@ -173,6 +173,8 @@ export const TUNING = {
   },
 
   campaign: {
+    /** Sorties a reprimand (written up) puts promotion back by. */
+    writeUpSorties: 3,
     /** Pilots on strength at the start, and the level replacements top up to. */
     startPilots: 18,
     establishment: 16,
@@ -243,6 +245,10 @@ export const TUNING = {
     crankToCatch: 2.2,
     /** Tally-ho needs an enemy within this range (m). */
     tallyRange: 9000,
+    /** Seconds before the controller answers a homing request. */
+    homingDelay: 3,
+    /** A forced landing in a sound aircraft is written up unless fuel is below this fraction. */
+    writeUpFuel: 0.06,
   },
 
   controller: {

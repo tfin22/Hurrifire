@@ -141,6 +141,9 @@ export const MAT = {
   mud: { ramp: [C.RAF_EARTH, C.RAF_EARTH_L, C.GREY_L] },
   beach: { ramp: [C.GREY_L, C.STUBBLE, C.CHALK] },
   airfield: { ramp: [C.FIELD, C.FIELD_L, C.FIELD_L] },
+  // Airfield markings seen from the air: the worn landing run and the perimeter track.
+  mown: { ramp: [C.FIELD_L, C.FIELD_L, C.STUBBLE] },
+  concrete: { ramp: [C.GREY_D, C.GREY_L, C.GREY_L] },
 } satisfies Record<string, Material>;
 
 export type MaterialName = keyof typeof MAT;

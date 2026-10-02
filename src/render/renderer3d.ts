@@ -35,6 +35,8 @@ export interface ModelOpts {
   lodBias?: number;
   /** Non-uniform scale (clouds). */
   scale?: [number, number, number];
+  /** Flat marking on the ground: drawn straight after the terrain, before anything standing on it. */
+  ground?: boolean;
 }
 
 type Item =
@@ -111,7 +113,7 @@ export class Renderer3D {
     let lod = opts.lod ?? (pr < TUNING.render.lodLowBelowPx ? 2 : pr < TUNING.render.lodMedBelowPx ? 1 : 0);
     if (opts.lod === undefined) lod = Math.min(2, lod + this.lodBias + (opts.lodBias ?? 0));
     lod = Math.min(lod, model.lods.length - 1);
-    this.items.push({ kind: 'model', depth: t[2], model: model.lods[lod], m: mc, t, rw: rq, lod, opts, dist });
+    this.items.push({ kind: 'model', depth: opts.ground ? 1e9 + t[2] : t[2], model: model.lods[lod], m: mc, t, rw: rq, lod, opts, dist });
   }
 
   /** A world-space point drawn as 1 or 2 pixels. */

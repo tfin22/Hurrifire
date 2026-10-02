@@ -52,6 +52,8 @@ export const NEWS = {
   airfieldBombed: (name: string) => `${name} was bombed.`,
   airfieldClosed: (name: string) => `${name} is out of action.`,
   airfieldOpen: (name: string) => `${name} is serviceable again.`,
+  writtenUp: (n: number) => n > 1 ? `Another reprimand on your record (${n} now). Promotion will wait.` : 'A reprimand goes on your record. Promotion will have to wait a while.',
+  aircraftRecovered: 'Your aircraft is out of the line for a day while a crew fetches it back from the field.',
   youWounded: (days: number) => `You are in hospital for ${days} days. The squadron fights on without you.`,
   youBack: 'You are passed fit and back on the squadron.',
   pairsAvailable: 'The squadron could fly in pairs now: looser, every pilot searching the sky. The vic is pretty but it gets people killed.',

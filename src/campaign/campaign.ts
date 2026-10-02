@@ -52,6 +52,8 @@ export interface CampaignPlayer {
   minutes: number;
   status: 'fit' | 'wounded' | 'killed' | 'pow';
   backOn?: number;
+  /** Reprimands: sound aircraft put down in fields. Each holds promotion back. */
+  writeUps?: number;
 }
 
 export interface CampaignState {
@@ -289,6 +291,11 @@ export function applySortie(s: CampaignState, r: SortieResult): string[] {
   else if (o.aircraft === 'repairable') hurt(3 + rng.int(4));
   else if (o.aircraft === 'damaged') hurt(1 + rng.int(3));
   else if (o.aircraft === 'minor') hurt(1);
+  else if (o.kind === 'forced') { hurt(1); news.push(NEWS.aircraftRecovered); }
+  if (o.writtenUp && !s.ended) {
+    P.writeUps = (P.writeUps ?? 0) + 1;
+    news.push(NEWS.writtenUp(P.writeUps));
+  }
   // The others.
   for (const f of r.fates) {
     const p = s.roster.find((q) => q.id === f.id);
@@ -397,13 +404,16 @@ function promotion(s: CampaignState): string[] {
   const T = TUNING.campaign;
   const P = s.player;
   if (P.status !== 'fit' && P.status !== 'wounded') return [];
-  if (P.rank === 'P/O' && ((P.sorties >= T.fltLtSorties && P.destroyed >= T.fltLtKills) || P.sorties >= T.fltLtSortiesAlone)) {
+  // Each reprimand counts against the sorties that earn promotion.
+  const pen = (P.writeUps ?? 0) * T.writeUpSorties;
+  const sorties = P.sorties - pen, atRank = P.sortiesAtRank - pen;
+  if (P.rank === 'P/O' && ((sorties >= T.fltLtSorties && P.destroyed >= T.fltLtKills) || sorties >= T.fltLtSortiesAlone)) {
     const b = s.roster.find((p) => p.role === 'B');
     if (b) { b.role = undefined; b.status = 'posted'; }
     promote(s, 'F/Lt');
     return [NEWS.promotedFlt(b ? pilotName(b) : 'the flight commander')];
   }
-  if (P.rank === 'F/Lt' && ((P.sortiesAtRank >= T.sqnLdrSortiesAtRank && P.destroyed >= T.sqnLdrKills) || P.sorties >= T.sqnLdrSortiesAlone)) {
+  if (P.rank === 'F/Lt' && ((atRank >= T.sqnLdrSortiesAtRank && P.destroyed >= T.sqnLdrKills) || sorties >= T.sqnLdrSortiesAlone)) {
     const co = s.roster.find((p) => p.role === 'CO');
     if (co) { co.role = undefined; co.status = 'posted'; }
     promote(s, 'S/Ldr');

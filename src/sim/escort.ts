@@ -12,6 +12,7 @@ import { AIRCRAFT } from '../content/aircraft';
 import { TARGETS } from '../content/raids';
 import { LW_LOG, LW_PLACES, LW_RT } from '../content/text/escort';
 import { clockOf } from '../content/text/rt';
+import { WRITE_UP } from '../content/text/briefing';
 import { describePlace, isFrance, placeName } from '../content/world/describe';
 import { lonLatToXZ, WorldMap } from '../content/world/map';
 import type { WorldObjects } from '../content/world/objects';
@@ -27,8 +28,8 @@ import type { RTMessage } from './controller';
 import { damageFraction } from './damage';
 import type { Plane } from './plane';
 import { Raid, RaidSpec } from './raid';
-import type { PilotOutcome, SortieResult } from './sortie';
-import { formationSlots } from './sortie';
+import type { Homing, PilotOutcome, SortieResult } from './sortie';
+import { formationSlots, homingTo } from './sortie';
 import { dayOfYear, sunDirection } from './sun';
 import { DayWeather, windVector } from './weather';
 import { World } from './world';
@@ -93,6 +94,9 @@ export class EscortSortie {
   private bombsCalled = false;
   private lastBomberCall = -999;
   private endT = -1;
+  /** The field the Gefechtsstand last gave a bearing to (shown on screen). */
+  homing: Homing | null = null;
+  private homingDue = -1;
   private seen = new Map<number, Engagement['lastSeen']>();
   private readonly targetName: string;
 
@@ -181,6 +185,11 @@ export class EscortSortie {
       case 'tallyHo': case 'order1': this.attack(); break;
       case 'order2': this.attack(); break;
       case 'order3': this.giveAll('follow'); this.controller.say(this.time, LW_RT.follow(this.spec.colour + ' 1'), 'player'); break;
+      case 'homing':
+        if (this.homingDue >= 0 || this.player.fs.onGround) break;
+        this.controller.say(this.time, LW_RT.homingReq(this.spec.colour + ' 1'), 'player');
+        this.homingDue = this.time + TUNING.sortie.homingDelay;
+        break;
       case 'order4': this.giveAll('reform'); this.controller.say(this.time, LW_RT.reform(this.spec.colour + ' 1'), 'player'); break;
     }
   }
@@ -205,6 +214,14 @@ export class EscortSortie {
     this.sendRaf();
     if (w.tick % 250 === 0) this.vectorRaf();
     this.radio();
+    if (this.homingDue >= 0 && this.time >= this.homingDue) {
+      this.homingDue = -1;
+      const me = this.player.pos;
+      const h = (this.homing = homingTo(this.map, me, false, w.weather.wind, LW_PLACES.fields));
+      const brg = (Math.atan2(h.field.pos.x - me.x, h.field.pos.z - me.z) * 180) / Math.PI;
+      const km = Math.max(1, Math.round(Math.hypot(h.field.pos.x - me.x, h.field.pos.z - me.z) / 1000));
+      this.controller.say(this.time, LW_RT.homing(Math.round((brg + 360) % 360), h.field.name, km), 'controller', true);
+    }
     this.trackSightings();
     this.checkEnd(dt);
   }
@@ -353,7 +370,10 @@ export class EscortSortie {
     if (!isFrance(p.pos.x, p.pos.z)) return { kind: 'pow', pilot: 'lost', aircraft: 'writeOff', place: pl, line: LW_LOG.pow(where(p.pos)) };
     const onField = !!this.map.airfieldAt(p.pos.x, p.pos.z);
     if (onField) return { kind: 'landed', pilot: r?.pilot ?? 'fine', aircraft: r?.aircraft ?? aircraft, place: pl, line: this.redLight ? LW_LOG.homeRed(pl) : LW_LOG.home(pl) };
-    return { kind: r?.kind === 'belly' ? 'belly' : 'forced', pilot: r?.pilot ?? 'fine', aircraft: r?.aircraft ?? 'damaged', place: pl, line: LW_LOG.forcedFrance(where(p.pos)) };
+    const out: PilotOutcome = { kind: r?.kind === 'belly' ? 'belly' : 'forced', pilot: r?.pilot ?? 'fine', aircraft: r?.aircraft ?? 'damaged', place: pl, line: LW_LOG.forcedFrance(where(p.pos)) };
+    const sound = (!r || r.aircraft === 'fine') && dmg < 0.05 && p.damage.pilot !== 'wounded' && p.fs.engine !== 'dead' && p.fs.engine !== 'seized' && p.fs.fuel > p.type.fuelCapacity * TUNING.sortie.writeUpFuel;
+    if (sound) out.writtenUp = WRITE_UP.lw;
+    return out;
   }
 
   private compile(): SortieResult {

@@ -40,6 +40,7 @@ export class DebriefScreen implements Screen {
     L(`Rounds fired: ${r.roundsFired}.`);
     L(r.damageTaken > 0.01 ? `Damage: ${r.damageNotes.join(', ')}.` : 'Aircraft undamaged.');
     L(r.outcome.line);
+    if (r.outcome.writtenUp) L(r.outcome.writtenUp, C.FIRE_R);
     if (r.outcome.kind === 'ditched' || r.outcome.kind === 'lostSea') L(DEBRIEF.ditchAdvice, C.GREY_L);
     if (r.losses.length) {
       L('');

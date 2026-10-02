@@ -52,13 +52,16 @@ export const RT = {
   update: (sq: string, ctl: string, hdg: string, strength: string, where: string, angels: string) =>
     `${sq} Leader, ${ctl}. Steer ${hdg}. ${cap(strength)} bandits now ${where}, angels ${angels}.`,
   close: (sq: string, ctl: string, miles: string, clock: string, rel: string) =>
-    `${sq} Leader, ${ctl}. Bandits ${miles} miles, ${clock}, ${rel}. Keep a good look-out.`,
+    `${sq} Leader, ${ctl}. Bandits ${miles} ${miles === 'one' ? 'mile' : 'miles'}, ${clock}, ${rel}. Keep a good look-out.`,
   orbit: (sq: string, ctl: string, where: string, angels: string) =>
     `${sq} Leader, ${ctl}. Orbit ${where}, angels ${angels}.`,
   pancake: (sq: string, ctl: string) => `${sq} Leader, ${ctl}. Pancake, pancake. Good show.`,
   pancakeFuel: (sq: string, ctl: string) => `${sq} Leader, ${ctl}. Pancake when you're ready.`,
   comeHome: (sq: string, ctl: string) => `${sq} Leader, ${ctl}. You are leaving the sector. Come home.`,
   overFrance: (sq: string, ctl: string) => `${sq} Leader, ${ctl}. You're over France. Come home, old boy.`,
+  homingReq: (sq: string, ctl: string) => `Hello ${ctl}, ${sq} Leader. Request homing. Over.`,
+  homing: (sq: string, ctl: string, hdg: string, field: string, miles: string, land: string) =>
+    `${sq} Leader, ${ctl}. Steer ${hdg} for ${field}, ${miles} ${miles === 'one' ? 'mile' : 'miles'}. Landing ${land}. Over.`,
   tallyAck: (ctl: string) => `Good luck. ${ctl} listening out.`,
   tallyHo: (sq: string, n: string, type: string, clock: string, rel: string) =>
     `Tally-ho! ${cap(n)} ${type} at ${clock}, ${rel}. ${sq} Squadron, going in!`,
