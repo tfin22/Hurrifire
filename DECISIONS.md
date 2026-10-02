@@ -530,3 +530,28 @@ button (key N) appears:
 
 Also: the debrief no longer says "Airborne 0 seconds after the scramble"
 for sorties that start in the air (Quick Combat and Arcade).
+
+## The off-screen arrow (playtest fix)
+
+"Following the red arrow I can never find the plane; it flicks from one
+side of the screen to the other without being visible." Three bugs:
+
+- **It pointed the wrong way for anything behind.** The arrow flipped a
+  target's camera-space direction when it was behind the camera. That's
+  right for a projected point, but wrong for a raw direction (camera x is
+  right whether the target is ahead or behind). A bandit behind-left got
+  an arrow pointing right. Following it turned you away, and the arrow
+  swapped sides as the bandit passed astern. Behind, it now points to the
+  side the target is on, leaning sideways ("turn this way").
+- **No arrow just off the edge of the view.** Whether something needed an
+  arrow was decided by "in front of the camera", not "on screen". So a
+  bandit 50 degrees off the nose had neither an arrow nor a visible
+  bracket: it seemed to flick past. The arrow now shows whenever the
+  target isn't actually in view.
+- **Labels pinned to the edge.** Type labels for aircraft off screen were
+  clamped to the edge of the view, which looked like a target that wasn't
+  there. Brackets and labels are now drawn only for aircraft in view.
+
+The arrow also stays on one group instead of hopping between two at
+similar range, and its label gives the clock position as a pilot would
+call it: "1 FIGHTER 0.9 MI 8 O'CLOCK HIGH".

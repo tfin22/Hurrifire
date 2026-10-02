@@ -82,6 +82,15 @@ function strength(g: Group): string {
   return [part(bombers, 'BOMBER'), part(fighters, 'FIGHTER')].filter(Boolean).join(' + ');
 }
 
+/** Projected and actually inside the view (with a margin), not just in front of the camera. */
+function inView(cam: Camera, p: Vec3, out: { x: number; y: number; z: number }, margin = 4): boolean {
+  return cam.project(p, out) && out.x >= cam.vx0 + margin && out.x <= cam.vx1 - margin && out.y >= cam.vy0 + margin && out.y <= cam.vy1 - margin;
+}
+
+/** The group the arrow points at, kept until it's in sight or something much nearer turns up. */
+let pointing: { key: string; dist: number } | null = null;
+const groupKey = (g: Group) => (g.members.length ? `p${g.members[0].id}` : `r${Math.round(g.pos.x / 3000)},${Math.round(g.pos.z / 3000)}`);
+
 /** Screen boxes already taken by labels this frame. */
 const taken: [number, number, number, number][] = [];
 
@@ -101,7 +110,7 @@ export function drawSpotting(fb: FrameBuffer, cam: Camera, world: World, me: Pla
   const S = TUNING.spotting;
   const groups = enemyGroups(world, me);
   const out = { x: 0, y: 0, z: 0 };
-  let offscreen: Group | null = null;
+  const unseen: Group[] = [];
   let labelled = 0;
   taken.length = 0;
   for (const g of groups) {
@@ -111,7 +120,8 @@ export function drawSpotting(fb: FrameBuffer, cam: Camera, world: World, me: Pla
       const byRange = [...g.members].sort((a, b) => a.pos.distTo(me.pos) - b.pos.distTo(me.pos));
       for (const q of byRange) {
         const d = q.pos.distTo(me.pos);
-        if (d > S.individualRange * 1.5 || !cam.project(q.pos, out)) continue;
+        // Only aircraft actually in view: a label pinned to the edge for one off screen just misleads.
+        if (d > S.individualRange * 1.5 || !inView(cam, q.pos, out, 0)) continue;
         const r = Math.max(3, (cam.f * q.type.span * 0.5 * (world.bigTargets ? targetScale(d) : 1)) / out.z + 2);
         const x0 = out.x - r, x1 = out.x + r, y0 = out.y - r, y1 = out.y + r;
         const ace = q.skill.level === 'experte';
@@ -128,7 +138,7 @@ export function drawSpotting(fb: FrameBuffer, cam: Camera, world: World, me: Pla
           }
         }
       }
-      if (!g.members.some((q) => cam.project(q.pos, out)) && !offscreen) offscreen = g;
+      if (!g.members.some((q) => inView(cam, q.pos, out))) unseen.push(g);
       continue;
     }
     // One oblong round the whole formation.
@@ -138,7 +148,8 @@ export function drawSpotting(fb: FrameBuffer, cam: Camera, world: World, me: Pla
       if (!cam.project(p, out)) continue;
       x0 = Math.min(x0, out.x); x1 = Math.max(x1, out.x); y0 = Math.min(y0, out.y); y1 = Math.max(y1, out.y);
     }
-    if (x0 === Infinity) { if (!offscreen) offscreen = g; continue; }
+    if (!pts.some((p) => inView(cam, p, out))) unseen.push(g);
+    if (x0 === Infinity) continue;
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     const w = Math.max(14, x1 - x0 + 6), h = Math.max(7, y1 - y0 + 6);
     const col = g.reported ? C.FIRE_Y : C.WHITE;
@@ -146,10 +157,17 @@ export function drawSpotting(fb: FrameBuffer, cam: Camera, world: World, me: Pla
     label(fb, cam, strength(g), cx, cy - h / 2 - 15, col, true);
     label(fb, cam, `${placeOf(map, g.pos)}  ${(g.dist / M_PER_MILE).toFixed(g.dist < 16000 ? 1 : 0)} MI`, cx, cy - h / 2 - 8, col, true);
   }
-  if (offscreen) {
-    const g = offscreen;
+  // One arrow, to the nearest group out of sight; it stays on that group
+  // rather than hopping between two at similar range.
+  let g: Group | undefined = unseen[0];
+  if (pointing) {
+    const kept = unseen.find((u) => groupKey(u) === pointing!.key);
+    if (kept && (!g || kept.dist < g.dist * 1.4)) g = kept;
+  }
+  pointing = g ? { key: groupKey(g), dist: g.dist } : null;
+  if (g) {
     const n = g.reported ? `RAID ${g.estimate}+` : strength(g).split(' + ')[0];
-    drawPointer(fb, cam, g.pos, `${n} ${miles(g.dist)} MI`, g.reported ? C.FIRE_Y : C.FIRE_R);
+    drawPointer(fb, cam, g.pos, `${n} ${miles(g.dist)} MI`, g.reported ? C.FIRE_Y : C.FIRE_R, true);
   }
 }
 
@@ -196,22 +214,47 @@ export function drawHoming(fb: FrameBuffer, cam: Camera, me: Plane, h: Homing): 
   label(fb, cam, `${dist}  LAND ${land}`, pc.x, pc.y - 11, col, true);
 }
 
-/** An arrow at the edge of the view towards something out of sight. */
-function drawPointer(fb: FrameBuffer, cam: Camera, pos: Vec3, text: string, col: number): void {
-  const t = [0, 0, 0];
-  cam.toCam(pos.x, pos.y, pos.z, t);
-  // Screen-space direction (y down); straight behind reads as "below".
+/**
+ * Screen direction (unit, y down) for an arrow to a point at camera-space
+ * t = [right, up, forward]. Behind the camera it leans hard to the side to
+ * turn to, so it never flips sides until the target is actually ahead.
+ */
+export function pointerDirection(t: ArrayLike<number>): { dx: number; dy: number } {
   let dx = t[0], dy = -t[1];
-  if (t[2] < 0) { dx = -dx; dy = -dy; }
+  if (t[2] < 0) {
+    const side = Math.abs(dx) > 1 ? Math.sign(dx) : 1;
+    dx = side * Math.max(Math.abs(dx), Math.hypot(t[0], t[2]) * 0.5);
+    dy *= 0.5;
+  }
   if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) dy = 1;
   const l = Math.hypot(dx, dy);
-  dx /= l; dy /= l;
+  return { dx: dx / l, dy: dy / l };
+}
+
+/** "4 O'CLOCK HIGH" for a point at camera-space t = [right, up, forward]. */
+export function clockCall(t: ArrayLike<number>): string {
+  const h = ((Math.round(Math.atan2(t[0], t[2]) / (Math.PI / 6)) % 12) + 12) % 12 || 12;
+  const elev = Math.atan2(t[1], Math.hypot(t[0], t[2]));
+  return `${h} O'CLOCK${elev > 0.12 ? ' HIGH' : elev < -0.12 ? ' LOW' : ''}`;
+}
+
+/** An arrow at the edge of the view towards something out of sight. */
+function drawPointer(fb: FrameBuffer, cam: Camera, pos: Vec3, text: string, col: number, clock = false): void {
+  const t = [0, 0, 0];
+  cam.toCam(pos.x, pos.y, pos.z, t);
+  // Screen-space direction (y down): the way to turn. Camera x is right and
+  // y is up whether the target is ahead or behind, so behind needs no flip
+  // (flipping it pointed the arrow the wrong way, and it jumped sides as
+  // the target passed astern). Behind, it leans to the side to turn to.
+  const { dx, dy } = pointerDirection(t);
   const cx = cam.cx, cy = (cam.vy0 + cam.vy1) / 2;
   const hw = (cam.vx1 - cam.vx0) / 2 - 10, hh = (cam.vy1 - cam.vy0) / 2 - 10;
   const k = Math.min(hw / Math.max(1e-6, Math.abs(dx)), hh / Math.max(1e-6, Math.abs(dy)));
   const px = cx + dx * k, py = cy + dy * k;
   const s = 6;
   fillConvex(fb, [px + dx * s, px - dx * s - dy * s * 0.7, px - dx * s + dy * s * 0.7], [py + dy * s, py - dy * s + dx * s * 0.7, py - dy * s - dx * s * 0.7], 3, col);
+  // Where it is, as a pilot would call it: "4 O'CLOCK HIGH".
+  if (clock) text += `  ${clockCall(t)}`;
   // The label goes beside the arrow on the inside, clear of the point.
   const tw = textWidth(text, 'tiny');
   const lx = Math.abs(dx) > Math.abs(dy) ? px - Math.sign(dx) * (tw / 2 + 10) : px;
