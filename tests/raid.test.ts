@@ -155,3 +155,17 @@ describe('squadron formations', () => {
     expect(pr.skill.spot).toBeCloseTo(spotP, 5);
   });
 });
+
+describe('raid pace', () => {
+  it('a formation flies no faster than its slowest bombers, whatever the plan said', async () => {
+    const { Raid } = await import('../src/sim/raid');
+    const { Rng } = await import('../src/core/rng');
+    const { AIRCRAFT } = await import('../src/content/aircraft');
+    const mk = (type: 'ju87' | 'do17', speed: number) => new Raid(1, {
+      name: 'r', kind: 'convoy', targetName: 'x', target: new Vec3(0, 0, 0), start: new Vec3(0, 0, 50000), entry: new Vec3(0, 0, 30000),
+      alt: 3000, speed, delay: 0, groups: [{ type, count: 6, role: type === 'ju87' ? 'diveBomber' : 'bomber', altOffset: 0, skill: 'average' }, { type: 'bf109', count: 4, role: 'closeEscort', altOffset: 500, skill: 'average' }],
+    }, new Rng(1));
+    expect(mk('ju87', 110).speed).toBe(AIRCRAFT.ju87.cruise);
+    expect(mk('do17', 80).speed).toBe(80);
+  });
+});

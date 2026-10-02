@@ -101,6 +101,8 @@ export interface AircraftType {
   maxG: number;
   /** Drag coefficient of dive brakes, if fitted. */
   diveBrakeCd?: number;
+  /** Formation cruising speed (m/s, true): a raid flies no faster than its slowest bombers. */
+  cruise?: number;
   minG: number;
   /** Elevator response gain (1/s). */
   pitchGain: number;
@@ -218,7 +220,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     gunners: [], zones: fighterZones(8.6, 9.9, 3.8), engineNote: 0.85, spanFt: 0, bombLoad: 0,
   },
   bf110: {
-    id: 'bf110', name: 'Bf 110C', short: 'Bf 110', side: 'lw', role: 'heavyFighter', crew: 2,
+    id: 'bf110', cruise: 115, name: 'Bf 110C', short: 'Bf 110', side: 'lw', role: 'heavyFighter', crew: 2,
     emptyMass: 6100, fuelCapacity: 950, wingArea: 38.4, span: 16.25, length: 12.1,
     cd0: 0.025, oswald: 0.8, clAlpha: 4.6, cl0: 0.14, alphaStall: 0.26, flapCl: 0.6, flapCd: 0.06, gearCd: 0.02,
     power: 820_000, engines: 2, propEff: 0.74, critAlt: 4500, lapse: 6500, thrustV0: 60,
@@ -235,7 +237,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     zones: twinZones(12.1, 16.2, 2.6, 4.5, -1.5), engineNote: 0.85, spanFt: 0, bombLoad: 0,
   },
   do17: {
-    id: 'do17', name: 'Do 17Z', short: 'Do 17', side: 'lw', role: 'bomber', crew: 4,
+    id: 'do17', cruise: 88, name: 'Do 17Z', short: 'Do 17', side: 'lw', role: 'bomber', crew: 4,
     emptyMass: 7300, fuelCapacity: 1150, wingArea: 55, span: 18.0, length: 15.8,
     cd0: 0.026, oswald: 0.8, clAlpha: 4.7, cl0: 0.15, alphaStall: 0.26, flapCl: 0.6, flapCd: 0.06, gearCd: 0.02,
     power: 750_000, engines: 2, propEff: 0.72, critAlt: 4000, lapse: 6000, thrustV0: 60,
@@ -253,7 +255,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     zones: twinZones(15.8, 18, 3.0, 6.5, 1.5), engineNote: 0.8, spanFt: 0, bombLoad: 1000,
   },
   he111: {
-    id: 'he111', name: 'He 111H', short: 'He 111', side: 'lw', role: 'bomber', crew: 5,
+    id: 'he111', cruise: 85, name: 'He 111H', short: 'He 111', side: 'lw', role: 'bomber', crew: 5,
     emptyMass: 11200, fuelCapacity: 2000, wingArea: 87.6, span: 22.6, length: 16.4,
     cd0: 0.027, oswald: 0.82, clAlpha: 4.9, cl0: 0.15, alphaStall: 0.25, flapCl: 0.6, flapCd: 0.06, gearCd: 0.02,
     power: 1_000_000, engines: 2, propEff: 0.72, critAlt: 4000, lapse: 6000, thrustV0: 60,
@@ -272,7 +274,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     zones: twinZones(16.4, 22.6, 3.4, 7.0, -1.0), engineNote: 0.72, spanFt: 0, bombLoad: 2000,
   },
   ju88: {
-    id: 'ju88', name: 'Ju 88A', short: 'Ju 88', side: 'lw', role: 'bomber', crew: 4,
+    id: 'ju88', cruise: 95, name: 'Ju 88A', short: 'Ju 88', side: 'lw', role: 'bomber', crew: 4,
     emptyMass: 9800, fuelCapacity: 1300, wingArea: 54.5, span: 18.3, length: 14.4,
     cd0: 0.0235, oswald: 0.8, clAlpha: 4.7, cl0: 0.14, alphaStall: 0.25, flapCl: 0.6, flapCd: 0.06, gearCd: 0.02,
     power: 880_000, engines: 2, propEff: 0.74, critAlt: 4500, lapse: 6200, thrustV0: 60,
@@ -288,7 +290,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     zones: twinZones(14.4, 18.3, 2.9, 6.0, 3.0), engineNote: 0.78, spanFt: 0, bombLoad: 1400,
   },
   ju87: {
-    id: 'ju87', name: 'Ju 87B Stuka', short: 'Ju 87', side: 'lw', role: 'diveBomber', crew: 2,
+    id: 'ju87', cruise: 75, name: 'Ju 87B Stuka', short: 'Ju 87', side: 'lw', role: 'diveBomber', crew: 2,
     emptyMass: 3900, fuelCapacity: 350, wingArea: 31.9, span: 13.8, length: 11.0,
     cd0: 0.034, oswald: 0.78, clAlpha: 4.6, cl0: 0.18, alphaStall: 0.27, flapCl: 0.6, flapCd: 0.06, gearCd: 0,
     power: 820_000, engines: 1, propEff: 0.7, critAlt: 3500, lapse: 5500, thrustV0: 55,

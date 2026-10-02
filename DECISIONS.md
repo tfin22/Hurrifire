@@ -371,3 +371,9 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   Airspeed (red with SLOW! near the stall) and height are drawn large in
   the lower corners of the view, with the climb or sink rate. They can be
   switched off in Settings.
+- **Raids keep to their bombers' pace.** Quick Combat's Stuka raid swapped
+  Ju 87s into whatever template the Channel day drew, once a 109 sweep
+  ordered to 246 mph at 17,000 ft, so the Stukas began faster than a
+  Spitfire's starting speed. Every raid's speed is now capped at its
+  slowest bomber's formation cruise (Ju 87 170 mph, He 111 190, Do 17 197,
+  Ju 88 212, Bf 110 257), and the Stuka raid flies below 10,500 ft.

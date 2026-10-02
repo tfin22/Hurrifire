@@ -6,7 +6,7 @@
 
 import { Vec3 } from '../core/math';
 import { Rng } from '../core/rng';
-import { AircraftId } from '../content/aircraft';
+import { AIRCRAFT, AircraftId } from '../content/aircraft';
 import { BomberBrain, RaidLink } from './ai/bomber';
 import { DefensiveCircle, FighterBrain } from './ai/fighter';
 import { skillFor, SkillLevel } from './ai/types';
@@ -85,7 +85,9 @@ export class Raid implements RaidLink {
     this.id = id;
     this.route = [spec.start.clone(), spec.entry.clone(), spec.target.clone(), spec.entry.clone().add(new Vec3(6000, 0, -8000)), spec.start.clone()];
     this.route.forEach((p) => (p.y = spec.alt));
-    this.speed = spec.speed;
+    // A formation flies at the pace of its slowest bombers, whatever the plan said.
+    const cruise = spec.groups.filter((g) => g.role === 'bomber' || g.role === 'diveBomber' || g.role === 'zerstorer').map((g) => AIRCRAFT[g.type].cruise ?? Infinity);
+    this.speed = Math.min(spec.speed, ...cruise);
     this.alt = spec.alt;
     this.target = spec.target.clone();
     this.home = spec.start.clone();

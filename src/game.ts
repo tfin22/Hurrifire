@@ -151,7 +151,12 @@ export class Game {
           ] : []),
         ];
       }
-      if (cfg.raid === 'stukas') r.groups = [{ type: 'ju87', count: 9, role: 'diveBomber', altOffset: 0, skill: 'average' }, ...r.groups.filter((g) => g.type === 'bf109')];
+      if (cfg.raid === 'stukas') {
+        // Stukas go in low and slow, whatever template the Channel day drew.
+        r.groups = [{ type: 'ju87', count: 9, role: 'diveBomber', altOffset: 0, skill: 'average' }, ...r.groups.filter((g) => g.type === 'bf109').map((g) => ({ ...g, role: 'closeEscort' as const }))];
+        r.alt = Math.min(r.alt, 3200);
+        r.speed = 75;
+      }
       r.delay = 0;
       r.start = r.entry.clone().lerp(r.start, 0.25);
     }
