@@ -444,3 +444,114 @@ Where the spec was ambiguous, or where I took a liberty, it's noted here.
   by on a phone.
 - The keys line under Settings ran off the screen. It now takes three lines
   and includes V (homing) and X (engine off).
+
+## Arcade mode
+
+The playtest verdict was that the game is accurate but not fun: too much
+chasing, a fight too quick for the aircraft's responses, and no loop
+without blacking out. Arcade is now a third mode (Settings: MODE cycles
+Arcade, Assist, Authentic), and it is the default. Arcade includes
+everything Assist does, plus:
+
+- **Straight into the fight.** Scrambles and campaign sorties start in the
+  air, 800 m above the raid and about 7 km off it, turned in towards it. The
+  raid is just crossing the coast. Contact comes in about 20 seconds
+  instead of a ten-minute climb.
+- **A quicker, stronger aircraft.** Pitch and roll respond 50% faster, and
+  the engine gives 35% more thrust, so you can overhaul bombers and climb
+  out of trouble.
+- **No blackout or greying, no negative-G cut-out, no spins.** Full back
+  stick always holds the wing at the buffet. A loop from 300 mph at full
+  stick goes all the way round.
+- **Gunnery that rewards a hit.** Your rounds do 2.5 times the damage and
+  enemy rounds do you half. Big targets still applies if it's on.
+- **A softer enemy.** Every raid group is one grade less skilled (aces
+  become average pilots, average become green).
+
+All of it applies only to the player's aircraft and the raid. The real
+model is untouched underneath, and Assist and Authentic play exactly as
+before. The arcade flag is kept with the world, so replays re-run the same
+fight. The other side (the 109 escort) gets the arcade handling and
+damage rules too. It already starts in the air with the bombers.
+
+## Engine sounds
+
+The engines were one generic pulse loop, sped up and slowed down. They're
+now built from how each engine actually runs, still synthesised (nothing
+sampled) and still crushed to 8 bits:
+
+- **Merlin III.** 12 cylinders firing evenly, six times a revolution, so the
+  note is 260 Hz at 2,600 rpm. The two banks alternate through the exhaust
+  stubs at slightly different strengths, which gives the growl an octave
+  below. The de Havilland three-blade prop, geared 0.477, chops the note
+  1.43 times a revolution: the throb. The supercharger whines at about
+  1.3 kHz. Each cylinder has its own slightly different voice, so it isn't
+  a pure buzz.
+- **Throttled back.** A second Merlin loop is lumpy, misfiring, and
+  crackling and popping on the overrun, the sound of a Merlin coming in to
+  land. It cross-fades in as the throttle closes and is played at the same
+  rpm, so a dive with the throttle shut crackles at full revs.
+- **DB 601.** Fuel injection means no pops. It has a harder, raspier pulse,
+  240 Hz at 2,400 rpm, a quicker prop throb (VDM prop geared 0.645) and the
+  supercharger's whine well up.
+- **The bomber drone.** German twins (Jumo 211s in the He 111 and Ju 88) ran
+  their engines unsynchronised, and the two props beat against each other
+  in the pulsing drone everyone in the south learned to recognise. It's
+  heard within about a mile and a half of any bomber, under the wind.
+- Engine loops are now built at 22 kHz (the rest stay at 11 kHz) so the
+  supercharger is clear. Every component makes a whole number of cycles in
+  the loop, so it repeats without a click. The pitch now follows the true
+  rpm against the rpm the loop was built at.
+- To do the cross-fade and the drone, a Paula channel can now carry two
+  looped layers (engine power and overrun; wind and drone). There are still
+  four channels, and one-shots still take a channel over as before.
+
+## The docking computer (jump home)
+
+In Assist and Arcade, once the controller has given a homing, a JUMP HOME
+button (key N) appears:
+
+- It puts you on a 3 km final approach to the homing field, lined up on
+  the landing direction into the wind, wheels and flaps down, at approach
+  speed.
+- The approach autopilot (the same one the AI wingmen use) then flies the
+  glide path, flares, three-points it, brakes and switches off. The sortie
+  ends as a normal landing at that field, with no reprimand.
+- Moving the stick (more than about a third of its travel) hands control
+  back at any point. AUTOLAND flashes in the view while it's flying.
+- It refuses without a homing, on the ground, or with any enemy aircraft
+  within 9 km. You have to get clear of the fight first.
+- It's an instant jump. No fuel or time is charged for the trip home, and
+  the raid carries on without you.
+- It works the same for the 109 on the other side, to Marquise or
+  Calais-Marck.
+- The jump is a recorded command and the autopilot runs inside the
+  simulation, so a replay shows the same jump and the same landing.
+
+Also: the debrief no longer says "Airborne 0 seconds after the scramble"
+for sorties that start in the air (Quick Combat and Arcade).
+
+## The off-screen arrow (playtest fix)
+
+"Following the red arrow I can never find the plane; it flicks from one
+side of the screen to the other without being visible." Three bugs:
+
+- **It pointed the wrong way for anything behind.** The arrow flipped a
+  target's camera-space direction when it was behind the camera. That's
+  right for a projected point, but wrong for a raw direction (camera x is
+  right whether the target is ahead or behind). A bandit behind-left got
+  an arrow pointing right. Following it turned you away, and the arrow
+  swapped sides as the bandit passed astern. Behind, it now points to the
+  side the target is on, leaning sideways ("turn this way").
+- **No arrow just off the edge of the view.** Whether something needed an
+  arrow was decided by "in front of the camera", not "on screen". So a
+  bandit 50 degrees off the nose had neither an arrow nor a visible
+  bracket: it seemed to flick past. The arrow now shows whenever the
+  target isn't actually in view.
+- **Labels pinned to the edge.** Type labels for aircraft off screen were
+  clamped to the edge of the view, which looked like a target that wasn't
+  there. Brackets and labels are now drawn only for aircraft in view.
+
+The arrow also stays on one group instead of hopping between two at
+similar range, and its label gives the clock position as a pilot would
+call it: "1 FIGHTER 0.9 MI 8 O'CLOCK HIGH".

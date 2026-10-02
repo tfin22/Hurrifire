@@ -49,28 +49,96 @@ function cycle(len: number, f: (ph: number) => number): Float32Array {
   return d;
 }
 
+/** How a V12 sounds, for `v12()`. */
+export interface V12Spec {
+  /** Crank rpm the loop is built at (playback rate 1). */
+  rpm: number;
+  /** Crank revolutions in the loop: even (a 4-stroke cycle is two). */
+  revs: number;
+  /** Exhaust note: the ring of each firing pulse (Hz) and how fast it dies (1/s). */
+  body: number;
+  decay: number;
+  /** Share of each pulse that is noise rather than tone: the rasp. */
+  noise: number;
+  /** Second bank's pulses relative to the first: the growl at half the firing rate. */
+  bank: number;
+  /** Fixed spread between cylinders, and random spread cycle to cycle. */
+  cylVar: number;
+  cycleVar: number;
+  /** Propeller blade passes per crank revolution (blades x reduction gear), and how much they throb. */
+  blades: number;
+  prop: number;
+  /** Supercharger whine, as a harmonic of the crank, and its level. */
+  whine: number;
+  whineAmp: number;
+  /** Chance per firing of a misfire, and of an exhaust pop (the Merlin on the overrun). */
+  misfire?: number;
+  pops?: number;
+  /** Final low-pass (0..1, lower is duller). */
+  lp?: number;
+}
+
 /**
- * An aero engine loop: firing pulses through the exhaust stacks, each with
- * its own jitter, over a rumble. `cyl` pulses per crank revolution pair.
+ * A V12 aero engine loop, built from what the engine does: twelve cylinders
+ * firing evenly, six times a revolution, alternating bank to bank through
+ * the exhaust stubs, each with a slightly different voice; the propeller's
+ * blades chopping through the slipstream; the supercharger singing above
+ * it all. Every component makes a whole number of cycles in the loop, so it
+ * repeats seamlessly, and the whole thing pitches up and down with the rpm.
  */
-function engine(rng: Rng, rate: number, revs: number, cyl: number, harmonics: number[], rough: number): Float32Array {
-  // Loop length: a whole number of firing cycles at the base rpm.
-  const fireHz = (revs / 60) * (cyl / 2);
-  const cycles = 24;
-  const n = Math.round((rate / fireHz) * cycles);
+export function v12(rng: Rng, rate: number, e: V12Spec): Float32Array {
+  const crankHz = e.rpm / 60;
+  const n = Math.round((rate * e.revs) / crankHz);
   const d = new Float32Array(n);
-  const per = n / cycles;
-  for (let c = 0; c < cycles; c++) {
-    const amp = 1 - rough * rng.next();
-    const start = Math.round(c * per);
-    for (let j = 0; j < per && start + j < n; j++) {
-      const t = j / per;
-      let v = 0;
-      harmonics.forEach((h, k) => { v += h * Math.sin(TAU * (k + 1) * t + k * 0.7); });
-      d[start + j] = v * amp * Math.exp(-t * 2.2) + (rng.next() - 0.5) * 0.25 * rough;
+  const perRev = n / e.revs;
+  const fireEvery = perRev / 6;
+  const cyl = Array.from({ length: 12 }, () => 1 - e.cylVar * rng.next());
+  // One firing pulse: a ringing thump with a burst of noise on the front.
+  const pulseLen = Math.ceil(rate * 0.03);
+  const tone = new Float32Array(pulseLen), hiss = new Float32Array(pulseLen);
+  for (let j = 0; j < pulseLen; j++) {
+    const t = j / rate;
+    tone[j] = Math.sin(TAU * e.body * t) * Math.exp(-t * e.decay);
+    hiss[j] = Math.exp(-t * e.decay * 2.2);
+  }
+  const fires = e.revs * 6;
+  for (let k = 0; k < fires; k++) {
+    if (e.misfire && rng.chance(e.misfire)) continue;
+    const amp = cyl[k % 12] * (k % 2 ? e.bank : 1) * (1 - e.cycleVar * rng.next());
+    const at = Math.round(k * fireEvery);
+    for (let j = 0; j < pulseLen; j++) {
+      const v = tone[j] * (1 - e.noise) + (rng.next() * 2 - 1) * hiss[j] * e.noise;
+      d[(at + j) % n] += v * amp;
+    }
+    // Overrun: unburnt mixture banging in the stubs.
+    if (e.pops && rng.chance(e.pops)) {
+      const len = Math.round(rate * 0.006), big = 1.6 + rng.next() * 1.4;
+      for (let j = 0; j < len; j++) d[(at + j) % n] += (rng.next() * 2 - 1) * big * (1 - j / len);
     }
   }
-  return crush8(normalise(lowpass(d, 0.55), 0.9));
+  // Propeller and supercharger: whole numbers of cycles over the loop.
+  const bladeCycles = Math.round(e.blades * e.revs);
+  const whineCycles = e.whine * e.revs;
+  for (let i = 0; i < n; i++) {
+    const ph = i / n;
+    const chop = Math.sin(TAU * bladeCycles * ph);
+    // The blades chop the exhaust note (a throb) more than they add a note of their own.
+    d[i] = d[i] * (1 + e.prop * chop) + e.prop * 0.12 * chop + e.whineAmp * Math.sin(TAU * whineCycles * ph);
+  }
+  return crush8(normalise(lowpass(d, e.lp ?? 0.6), 0.9));
+}
+
+/**
+ * Twin engines out of step: the drone of a German bomber overhead. The two
+ * engines run a few rpm apart, so their propellers beat against each other:
+ * the throbbing "vrrm-vrrm" everyone in southern England learned to know.
+ */
+function twinDrone(rng: Rng, rate: number, a: V12Spec, b: V12Spec): Float32Array {
+  const ea = v12(rng, rate, a), eb = v12(rng, rate, b);
+  const n = Math.min(ea.length, eb.length);
+  const d = new Float32Array(n);
+  for (let i = 0; i < n; i++) d[i] = ea[i] + eb[i];
+  return crush8(normalise(lowpass(d, 0.35), 0.9));
 }
 
 /** Short burst of noise with an envelope: gunfire, impacts, bursts. */
@@ -102,10 +170,24 @@ export function buildSamples(seed = 1940): Record<string, Sample> {
   const rng = new Rng(seed);
   const R = 11025;
   const S: Record<string, Sample> = {};
-  // Engines: the Merlin's smooth, deep drone; the DB 601 harder-edged and a different note.
-  S.merlin = { data: engine(rng, R, 2600, 12, [1, 0.6, 0.35, 0.2, 0.12], 0.18), rate: R, loop: true };
-  S.db601 = { data: engine(rng, R, 2400, 12, [0.8, 0.8, 0.5, 0.35, 0.25, 0.15], 0.28), rate: R, loop: true };
-  S.radial = { data: engine(rng, R, 2200, 9, [1, 0.5, 0.4, 0.1], 0.35), rate: R, loop: true };
+  // Engines, at twice the rate of the rest so the supercharger can sing.
+  const E = 22050;
+  // Merlin III: 2,600 rpm, firing at 260 Hz; de Havilland three-blade prop
+  // geared 0.477 (blade passes 1.43 a rev); deep note, bank-to-bank growl.
+  const merlin: V12Spec = { rpm: 2600, revs: 28, body: 150, decay: 360, noise: 0.3, bank: 0.78, cylVar: 0.14, cycleVar: 0.06, blades: 3 * 0.477, prop: 0.22, whine: 30, whineAmp: 0.05 };
+  S.merlin = { data: v12(rng, E, merlin), rate: E, loop: true };
+  // Throttled back: lumpy, and crackling and popping on the overrun.
+  S.merlinIdle = { data: v12(rng, E, { ...merlin, cycleVar: 0.4, noise: 0.45, misfire: 0.07, pops: 0.07, whineAmp: 0.02, prop: 0.3 }), rate: E, loop: true };
+  // DB 601: fuel-injected inverted V12, 2,400 rpm, VDM prop geared 0.645;
+  // a harder, raspier note, the supercharger's whine well up, and no pops.
+  const db601: V12Spec = { rpm: 2400, revs: 30, body: 230, decay: 560, noise: 0.55, bank: 0.9, cylVar: 0.08, cycleVar: 0.08, blades: 3 * 0.645, prop: 0.26, whine: 37, whineAmp: 0.09 };
+  S.db601 = { data: v12(rng, E, db601), rate: E, loop: true };
+  S.db601Idle = { data: v12(rng, E, { ...db601, cycleVar: 0.25, misfire: 0.02, whineAmp: 0.04 }), rate: E, loop: true };
+  // Jumo 211 pair (He 111, Ju 88, the Stuka's single): heard from outside, a
+  // muffled drone, the two engines 60 rpm apart so the props beat.
+  const jumo: V12Spec = { rpm: 2280, revs: 76, body: 120, decay: 300, noise: 0.35, bank: 0.85, cylVar: 0.1, cycleVar: 0.1, blades: 3 * 0.645, prop: 0.5, whine: 30, whineAmp: 0.01, lp: 0.4 };
+  S.drone = { data: twinDrone(rng, R, jumo, { ...jumo, rpm: 2340, revs: 78 }), rate: R, loop: true };
+  S.radial = { data: v12(rng, R, { ...merlin, body: 110, noise: 0.5, cycleVar: 0.3, whineAmp: 0 }), rate: R, loop: true };
   S.starter = { data: crush8(normalise(build(R, 1.6, (t) => Math.sin(TAU * (60 + 140 * t) * t) * 0.6 + (rng.next() - 0.5) * 0.3))), rate: R, loop: false };
   S.cough = { data: crush8(normalise(build(R, 0.6, (t) => (rng.next() * 2 - 1) * (Math.sin(TAU * 7 * t) > 0.2 ? 1 : 0.15) * Math.exp(-t * 4)))), rate: R, loop: false };
   // Guns.

@@ -39,6 +39,8 @@ export interface FlownSortie {
   rewind(): void;
   /** The field given in the last homing (marked on screen). */
   readonly homing?: Homing | null;
+  /** The docking computer (jump to finals and autoland), where the sortie has one. */
+  readonly docking?: { readonly active: boolean };
 }
 import { TUNING } from '../tuning';
 import { FlightScreen } from './flight';
@@ -89,6 +91,7 @@ export class SortieScreen extends FlightScreen {
     if (this.mapOpen && s.taps.length) { this.mapOpen = false; s.taps.length = 0; }
     if (s.consume('tallyHo')) this.cmd('tallyHo');
     if (s.consume('homing')) this.cmd('homing');
+    if (s.consume('jumpHome')) this.cmd('jumpHome');
     for (const o of ['order1', 'order2', 'order3', 'order4'] as const) if (s.consume(o)) this.cmd(o);
     if (s.consume('start')) this.startPress();
     if (s.consume('primer')) this.cmd('primer');
@@ -143,6 +146,7 @@ export class SortieScreen extends FlightScreen {
       return;
     }
     super.render(fb);
+    if (this.sortie.docking?.active && (this.world.tick >> 4) & 1) drawText(fb, 'AUTOLAND - MOVE STICK TO TAKE OVER', 92, 150, C.SIGHT, 'tiny');
     this.drawRT(fb);
     if (this.sortie.phase === 'startup' && this.messageT <= 0) {
       drawText(fb, this.app.settings.assist ? 'PRESS START' : 'PRIMER - MAGS - STARTER', 4, 160, C.SIGHT, 'tiny');
@@ -185,7 +189,11 @@ export class SortieScreen extends FlightScreen {
     // Ask the controller the way home: not in the middle of a fight.
     const me = this.player;
     const fighting = this.world.planes.some((q) => q.side !== me.side && q.alive && q.pos.distTo(me.pos) < TUNING.sim.compressionDropRange);
-    if (!fs.onGround && !fighting && me.status === 'flying') b.push({ action: 'homing', label: 'HOMING' });
+    if (!fs.onGround && !fighting && me.status === 'flying') {
+      b.push({ action: 'homing', label: 'HOMING' });
+      // Assist/Arcade: once there's a field to go to, the jump home.
+      if (this.app.settings.assist && this.sortie.homing && !this.sortie.docking?.active) b.push({ action: 'jumpHome', label: 'JUMP HOME', lit: true });
+    }
     if (so.engaged && so.spec.leading) {
       b.unshift(...(so.orderButtons ?? [
         { action: 'order1', label: 'BOMBERS' }, { action: 'order2', label: 'ESCORT' },

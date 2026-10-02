@@ -22,6 +22,7 @@ import { assessClaims, Claim, Engagement, tally } from './claims';
 import { CloudField } from './clouds';
 import { SectorController } from './controller';
 import { damageFraction } from './damage';
+import { DockingComputer } from './docking';
 import { Plane } from './plane';
 import { Raid, RaidSpec } from './raid';
 import { dayOfYear, sunDirection } from './sun';
@@ -126,6 +127,28 @@ export function homingTo(map: WorldMap, pos: Vec3, raf: boolean, wind: Vec3, onl
   return { field, landDir: ((landDir % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) };
 }
 
+const EASIER: Record<SkillLevel, SkillLevel> = { experte: 'average', average: 'green', green: 'green' };
+
+/**
+ * Arcade mode: skip the scramble and the long climb. The squadron starts in
+ * the air above and to one side of the raid's track, the raid already
+ * crossing the coast, and the enemy a grade less skilled.
+ */
+export function arcadeSpec(spec: SortieSpec): SortieSpec {
+  const A = TUNING.arcade;
+  const raids = spec.raids.map((r) => ({ ...r, groups: r.groups.map((g) => ({ ...g, skill: EASIER[g.skill] })) }));
+  if (spec.start === 'air' || !raids.length) return { ...spec, raids };
+  const r = raids[0] = { ...raids[0], delay: 0, start: raids[0].entry.clone().lerp(raids[0].start, 0.05) };
+  // Ahead of the raid on its track and off to one side, turned in towards it.
+  const tx = r.target.x - r.start.x, tz = r.target.z - r.start.z, l = Math.hypot(tx, tz) || 1;
+  const px = r.start.x + (tx / l) * A.startAhead - (tz / l) * A.startAside;
+  const pz = r.start.z + (tz / l) * A.startAhead + (tx / l) * A.startAside;
+  return {
+    ...spec, raids, start: 'air', underAttack: false,
+    airStart: { pos: new Vec3(px, r.alt + A.startAbove, pz), heading: Math.atan2(r.start.x - px, r.start.z - pz) },
+  };
+}
+
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export class Sortie {
@@ -154,6 +177,8 @@ export class Sortie {
   /** The airfield the controller last gave a homing to (shown on screen). */
   homing: Homing | null = null;
   private homingDue = -1;
+  /** Jump to final approach after a homing, and land her (Assist/Arcade). */
+  readonly docking = new DockingComputer();
   /** Shared map state as it was at the start, so a replay can begin from the same place. */
   private readonly startState: { craters: Airfield['craters'][]; damaged: number[]; balloonsDown: boolean[] };
   private readonly wrecked: { kind: string }[] = [];
@@ -312,6 +337,7 @@ export class Sortie {
         if (fs.engine === 'off') { this.startAllT = 0; }
         break;
       case 'tallyHo': this.tallyHo(); break;
+      case 'jumpHome': this.jumpHome(); break;
       case 'homing':
         if (this.homingDue >= 0 || fs.onGround) break;
         this.controller.say(this.time, RT.homingReq(this.spec.squadron, this.controller.callsign), 'player', false);
@@ -397,7 +423,7 @@ export class Sortie {
     const dt = TUNING.sim.dt;
     this.startup(dt);
     const w = this.world;
-    w.step(f);
+    w.step(this.docking.control(this.player, f));
     for (const s of this.ships) {
       if (s.sunk) continue;
       s.pos.x += Math.sin(s.heading) * 4 * dt;
@@ -416,6 +442,15 @@ export class Sortie {
     if (this.homingDue >= 0 && this.time >= this.homingDue) this.giveHoming();
     this.trackSightings();
     this.updatePhase();
+  }
+
+  /** The docking computer: straight onto finals for the homing field. */
+  private jumpHome(): void {
+    const why = DockingComputer.refuse(this.world, this.player, this.homing);
+    if (why) { this.prompts.push(why); return; }
+    this.docking.engage(this.player, this.homing!);
+    this.controller.say(this.time, `${this.spec.squadron} Leader: Coming home.`, 'player', false);
+    this.prompts.push('ON FINALS - STICK TO TAKE OVER');
   }
 
   /** The controller's answer to a homing request: course, distance, landing direction. */
@@ -591,7 +626,7 @@ export class Sortie {
       date: `${this.spec.day} ${MONTHS[this.spec.month - 1]} 1940`,
       aircraft: AIRCRAFT[this.spec.playerType].name,
       durationMin: Math.round(this.time / 60),
-      takeoffDelay: this.airborneAt >= 0 ? Math.round(this.airborneAt) : -1,
+      takeoffDelay: this.spec.start === 'readiness' && this.airborneAt >= 0 ? Math.round(this.airborneAt) : -1,
       claims,
       roundsFired: p.armament.fired,
       damageTaken: damageFraction(p.damage),

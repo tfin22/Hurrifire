@@ -15,14 +15,21 @@ import { compileSong, NoteEvent, Song } from './tracker';
 
 const PAN = [-0.6, 0.6, 0.6, -0.6];
 
+/** The rpm each engine loop was built at (it plays at rate 1 there). */
+const ENGINE_RPM: Record<string, number> = { merlin: 2600, db601: 2400, radial: 2600 };
+
 /** Effect priorities: a more important sound steals a channel from a lesser one. */
 const PRIORITY: Record<string, number> = {
   explode: 6, clang: 5, cough: 4, cannon: 4, thud: 3, enemyFire: 3, starter: 4, rt: 2, pump: 1, click: 1, bell: 5, phone: 5, thump: 3,
 };
 
+interface Layer { src: AudioBufferSourceNode; gain: GainNode }
+
 interface Channel {
   gain: GainNode;
   src: AudioBufferSourceNode | null;
+  /** Looped samples mixed on this channel (the engine's power and overrun, wind and a bomber's drone). */
+  layers: Map<string, Layer>;
   kind: 'loop' | 'shot' | 'music' | null;
   name: string;
   prio: number;
@@ -31,9 +38,13 @@ interface Channel {
 
 export interface FlightSound {
   engine: 'merlin' | 'db601' | 'radial' | null;
-  /** Engine speed relative to cruise rpm (1 = normal). */
-  rpmFrac: number;
+  /** Crank rpm: the engine samples are pitched from it. */
+  rpm: number;
   throttle: number;
+  /** 0 = all overrun burble (throttle closed, or coughing) … 1 = all power. */
+  power: number;
+  /** A German bomber's drone nearby, 0..1. */
+  drone: number;
   guns: 0 | 4 | 8;
   /** Airspeed (m/s), for the wind. */
   speed: number;
@@ -85,7 +96,7 @@ export class Paula {
       const gain = ctx.createGain();
       const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
       if (pan) { pan.pan.value = PAN[i]; gain.connect(pan); pan.connect(this.master); } else gain.connect(this.master);
-      this.ch.push({ gain, src: null, kind: null, name: '', prio: 0, endsAt: 0 });
+      this.ch.push({ gain, src: null, layers: new Map(), kind: null, name: '', prio: 0, endsAt: 0 });
     }
     this.timer = setInterval(() => this.pump(), 40);
     if (this.song) this.startSong(this.song);
@@ -98,6 +109,8 @@ export class Paula {
 
   private stopSrc(c: Channel, at?: number): void {
     if (c.src) { try { c.src.stop(at ?? 0); } catch { /* already stopped */ } }
+    for (const l of c.layers.values()) { try { l.src.stop(at ?? 0); } catch { /* already stopped */ } }
+    c.layers.clear();
     c.src = null;
     c.kind = null;
     c.prio = 0;
@@ -163,45 +176,67 @@ export class Paula {
     this.updateFlight();
   }
 
+  /** Loop `name` on channel i at this rate and level, alongside the channel's other loops. */
   private loopOn(i: number, name: string, rate: number, vol: number): void {
     const ctx = this.ctx!;
     const c = this.ch[i];
     const now = ctx.currentTime;
     if (c.kind === 'shot' && c.endsAt > now) return; // a one-shot has it for now
-    if (c.kind !== 'loop' || c.name !== name) {
-      this.stopSrc(c);
-      const s = this.srcFor(name, rate);
-      if (!s) return;
-      s.connect(c.gain);
-      c.gain.gain.setValueAtTime(0, now);
-      s.start(now);
-      c.src = s;
-      c.kind = 'loop';
+    if (c.kind !== 'loop') { this.stopSrc(c); c.kind = 'loop'; c.gain.gain.setValueAtTime(1, now); }
+    let l = c.layers.get(name);
+    if (!l) {
+      const src = this.srcFor(name, rate);
+      if (!src) return;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0, now);
+      src.connect(gain);
+      gain.connect(c.gain);
+      src.start(now);
+      c.layers.set(name, (l = { src, gain }));
       c.name = name;
     }
-    c.src!.playbackRate.setTargetAtTime(rate, now, 0.05);
-    c.gain.gain.setTargetAtTime(vol, now, 0.04);
+    l.src.playbackRate.setTargetAtTime(rate, now, 0.05);
+    l.gain.gain.setTargetAtTime(vol, now, 0.04);
   }
 
-  private loopOff(i: number): void {
+  /** Fade out and stop channel i's loops, except those named. */
+  private loopsOnly(i: number, keep: string[] = []): void {
     const c = this.ch[i];
     if (c.kind !== 'loop' || !this.ctx) return;
     const now = this.ctx.currentTime;
-    c.gain.gain.setTargetAtTime(0, now, 0.03);
-    this.stopSrc(c, now + 0.15);
+    for (const [name, l] of c.layers) {
+      if (keep.includes(name)) continue;
+      l.gain.gain.setTargetAtTime(0, now, 0.03);
+      try { l.src.stop(now + 0.15); } catch { /* already stopped */ }
+      c.layers.delete(name);
+    }
+    if (!c.layers.size) { c.kind = null; c.prio = 0; }
   }
 
   private updateFlight(): void {
     const st = this.flightState;
-    if (!st) { for (let i = 0; i < 4; i++) if (this.ch[i].kind === 'loop') this.loopOff(i); return; }
+    if (!st) { for (let i = 0; i < 4; i++) this.loopsOnly(i); return; }
     const muff = st.inside ? 1 : 0.6;
-    if (st.engine && st.rpmFrac > 0.05) this.loopOn(0, st.engine, 0.35 + st.rpmFrac * 0.75, (0.25 + 0.45 * st.throttle) * muff);
-    else this.loopOff(0);
-    if (st.guns) this.loopOn(1, st.guns === 8 ? 'browning8' : 'browning4', 1, 0.8);
-    else this.loopOff(1);
-    if (st.buffet > 0.2) this.loopOn(3, 'buffet', 0.8 + st.buffet * 0.4, 0.3 + st.buffet * 0.5);
-    else if (st.speed > 15) this.loopOn(3, 'wind', 0.5 + Math.min(1.5, st.speed / 120), Math.min(0.5, (st.speed / 200) ** 2) * (st.inside ? 0.6 : 1));
-    else this.loopOff(3);
+    // Engine: the power loop and the overrun loop, cross-faded on the throttle,
+    // both pitched from the rpm the samples were built at.
+    if (st.engine && st.rpm > 120) {
+      const ref = ENGINE_RPM[st.engine];
+      const rate = Math.max(0.18, Math.min(1.35, st.rpm / ref));
+      const vol = (0.3 + 0.4 * st.throttle + 0.15 * Math.min(1, st.rpm / ref)) * muff;
+      const idle = `${st.engine}Idle`;
+      const hasIdle = this.buffers.has(idle);
+      this.loopOn(0, st.engine, rate, vol * (hasIdle ? st.power : 1));
+      if (hasIdle) this.loopOn(0, idle, rate, vol * (1 - st.power) * 1.1);
+      this.loopsOnly(0, hasIdle ? [st.engine, idle] : [st.engine]);
+    } else this.loopsOnly(0);
+    if (st.guns) { const g = st.guns === 8 ? 'browning8' : 'browning4'; this.loopOn(1, g, 1, 0.8); this.loopsOnly(1, [g]); }
+    else this.loopsOnly(1);
+    // Wind or buffet, and the drone of a bomber close by.
+    const keep: string[] = [];
+    if (st.buffet > 0.2) { this.loopOn(3, 'buffet', 0.8 + st.buffet * 0.4, 0.3 + st.buffet * 0.5); keep.push('buffet'); }
+    else if (st.speed > 15) { this.loopOn(3, 'wind', 0.5 + Math.min(1.5, st.speed / 120), Math.min(0.5, (st.speed / 200) ** 2) * (st.inside ? 0.6 : 1)); keep.push('wind'); }
+    if (st.drone > 0.02) { this.loopOn(3, 'drone', 1, st.drone * 0.7 * muff); keep.push('drone'); }
+    this.loopsOnly(3, keep);
   }
 
   // ------------------------------------------------------------ music

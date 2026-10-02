@@ -93,6 +93,8 @@ export interface FlightEnv {
   autoRudder: boolean;
   /** Full back stick holds the wing at the buffet rather than stalling it (the player's assist). */
   stallGuard?: boolean;
+  /** Arcade handling: more thrust, quicker controls, no cut-out, no spins (the player's choice). */
+  arcade?: boolean;
 }
 
 export type FlightEventKind =
@@ -309,8 +311,8 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   const S = t.wingArea;
 
   // ---- Engine and thrust.
-  const powerFrac = engineStep(s, c, mods, dt, V, rng);
-  const power = t.power * t.engines * powerFrac * altitudePowerFactor(t, s.pos.y);
+  const powerFrac = engineStep(s, c, mods, dt, V, rng, !!env.arcade);
+  const power = t.power * t.engines * powerFrac * altitudePowerFactor(t, s.pos.y) * (env.arcade ? TUNING.arcade.thrust : 1);
   const thrust = (t.propEff * power) / Math.max(V, t.thrustV0);
 
   // ---- Aerodynamic forces.
@@ -367,14 +369,15 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   let alphaReq = (clReq - t.cl0 - s.flaps * t.flapCl) / t.clAlpha;
   const asEff = t.alphaStall - s.flaps * 0.03;
   // Only the last part of the stick travel takes the wing past the stall.
-  const stallLimit = pitchIn > T.stallStick && !env.stallGuard ? T.overStall : T.softStall;
+  const stallLimit = pitchIn > T.stallStick && !env.stallGuard && !env.arcade ? T.overStall : T.softStall;
   alphaReq = clamp(alphaReq, -asEff * 0.95, asEff * stallLimit);
-  const kA = t.pitchGain * authority * mods.elevator * (0.55 + 0.45 * pilot);
+  const quick = env.arcade ? TUNING.arcade.pitch : 1;
+  const kA = t.pitchGain * authority * mods.elevator * (0.55 + 0.45 * pilot) * quick;
   let qr = pathPitch + kA * (alphaReq - alpha);
-  qr = clamp(qr, -T.maxPitchRate, T.maxPitchRate);
+  qr = clamp(qr, -T.maxPitchRate * quick, T.maxPitchRate * quick);
 
   // Roll.
-  let pCmd = c.roll * rollRateMax(t, V) * mods.aileron * (0.6 + 0.4 * pilot) + mods.aileronBias + mods.rollBias;
+  let pCmd = c.roll * rollRateMax(t, V) * mods.aileron * (0.6 + 0.4 * pilot) * (env.arcade ? TUNING.arcade.roll : 1) + mods.aileronBias + mods.rollBias;
   // Yaw: sideslip target from rudder or auto-rudder; torque at high power, low speed.
   const torqueBeta = t.torque * powerFrac * clamp(1 - V / 110, 0, 1);
   let betaTarget: number;
@@ -398,7 +401,7 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
     pCmd += s.spinDir * T.wingDrop * clamp((alpha - asEff) / 0.1, 0.3, 1);
     // Yawing while stalled develops into a spin.
     const yawing = Math.abs(s.r) > 0.35 || Math.abs(beta) > 0.1 || c.yaw * s.spinDir > 0.3;
-    if (yawing && alphaReq > asEff * 0.98) s.spin = Math.min(1, s.spin + dt * T.spinBuild);
+    if (yawing && alphaReq > asEff * 0.98 && !env.arcade) s.spin = Math.min(1, s.spin + dt * T.spinBuild);
   }
   if (alphaReq < asEff * 0.9) {
     // Stick forward: recovery, quicker with opposite rudder.
@@ -472,14 +475,14 @@ function defaultTouchdown(info: TouchdownInfo): GroundResponse {
 }
 
 /** Engine, fuel and temperatures. Returns the delivered power fraction. */
-function engineStep(s: FlightState, c: FlightControls, mods: FlightMods, dt: number, V: number, rng: Rng): number {
+function engineStep(s: FlightState, c: FlightControls, mods: FlightMods, dt: number, V: number, rng: Rng, noCutout = false): number {
   const t = s.type;
   const T = TUNING.flight;
   s.throttle = clamp(c.throttle, 0, 1);
   const running = s.engine === 'running' || s.engine === 'coughing';
   // Negative-G cut-out: float carburettors starve; fuel injection doesn't care.
   // The float chamber needs a moment of real negative G to starve the carburettor.
-  s.negGT = s.nz < T.cutoutG ? s.negGT + dt : 0;
+  s.negGT = s.nz < T.cutoutG && !noCutout ? s.negGT + dt : 0;
   if (running && !t.fuelInjected && s.negGT > T.cutoutDelay) {
     if (s.cutoutT <= 0) s.events.push('cutout');
     s.cutoutT = T.cutoutRecover;

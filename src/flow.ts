@@ -8,7 +8,7 @@ import { DebriefScreen, LogbookScreen, SettingsScreen } from './screens/debrief'
 import { DispersalScreen } from './screens/dispersal';
 import { TitleScreen } from './screens/menu';
 import { SortieScreen } from './screens/sortieScreen';
-import { Sortie, SortieSpec } from './sim/sortie';
+import { arcadeSpec, Sortie, SortieSpec } from './sim/sortie';
 import { QuickCombatScreen } from './screens/quickCombat';
 import { CampaignBoardScreen, CampaignEndScreen, CampaignStartScreen, RosterScreen } from './screens/campaign';
 import { abortedSortie, applyAirfieldState, applySortie, nextSortieSpec } from './campaign/campaign';
@@ -100,6 +100,8 @@ export class Flow {
   }
 
   fly(spec: SortieSpec, campaign?: { done: (r: SortieResult, replay: (back: () => void) => void) => void; quit: () => void }): void {
+    // Arcade: straight into the air near the raid, against a less skilled enemy.
+    if (this.app.settings.arcade) spec = arcadeSpec(spec);
     if (!campaign) for (const af of this.game.map.airfields) { af.craters = []; af.damaged = 0; }
     this.flySortie(() => new Sortie(spec, this.game.map, this.game.objects), (res, replay) => {
       if (campaign) { campaign.done(res, replay); return; }
@@ -136,6 +138,6 @@ export class Flow {
   private replay(sortie: FlownSortie, make: () => FlownSortie, flown: SortieScreen, back: () => void): void {
     sortie.rewind();
     const again = make();
-    this.app.setScreen(new ReplayScreen(this.app, again, flown.recording, { autoRudder: flown.world.autoRudder, stallGuard: flown.world.stallGuard, bigTargets: flown.world.bigTargets }, back));
+    this.app.setScreen(new ReplayScreen(this.app, again, flown.recording, { autoRudder: flown.world.autoRudder, stallGuard: flown.world.stallGuard, bigTargets: flown.world.bigTargets, arcade: flown.world.arcade }, back));
   }
 }

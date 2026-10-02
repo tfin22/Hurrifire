@@ -160,7 +160,11 @@ export class SettingsScreen implements Screen {
     const st = app.settings;
     const on = (b: boolean) => (b ? 'ON' : 'OFF');
     const items = () => [
-      { label: `MODE: ${st.assist ? 'ASSIST' : 'AUTHENTIC'}`, act: () => { st.assist = !st.assist; this.refresh(); } },
+      // Arcade -> Assist -> Authentic -> Arcade.
+      { label: `MODE: ${st.arcade ? 'ARCADE' : st.assist ? 'ASSIST' : 'AUTHENTIC'}`, act: () => {
+        if (st.arcade) { st.arcade = false; st.assist = true; } else if (st.assist) st.assist = false; else { st.arcade = true; st.assist = true; }
+        this.refresh();
+      } },
       { label: `ENEMY MARKERS: ${on(st.markers)}`, act: () => { st.markers = !st.markers; this.refresh(); } },
       { label: `BIG SPEED/HEIGHT: ${on(st.bigReadouts)}`, act: () => { st.bigReadouts = !st.bigReadouts; this.refresh(); } },
       { label: `AMMO BAR: ${on(st.ammoBar)}`, act: () => { st.ammoBar = !st.ammoBar; this.refresh(); } },
@@ -195,9 +199,10 @@ export class SettingsScreen implements Screen {
     fillRect(fb, 0, 0, W, 256, C.SMOKE);
     panel(fb, 50, 24, 220, 200);
     this.menu.draw(fb, 'SETTINGS');
-    drawTextCentered(fb, 'ASSIST: LEAD MARKER, LANDING AIDS, ONE START BUTTON', 160, 229, C.CHALK, 'tiny');
+    const st = this.app.settings;
+    drawTextCentered(fb, st.arcade ? 'ARCADE: START NEAR THE RAID, QUICK AND TOUGH, NO BLACKOUT' : st.assist ? 'ASSIST: LEAD MARKER, LANDING AIDS, ONE START BUTTON' : 'AUTHENTIC: AS IT WAS', 160, 229, C.CHALK, 'tiny');
     drawTextCentered(fb, 'KEYS: ARROWS/WASD STICK, SPACE FIRE, +/- THROTTLE, G GEAR, F FLAPS,', 160, 238, C.GREY_L, 'tiny');
     drawTextCentered(fb, 'P PADLOCK, B LOOK BACK, T TALLY-HO, 1-4 ORDERS, M MAP, V HOMING,', 160, 245, C.GREY_L, 'tiny');
-    drawTextCentered(fb, 'I START, X ENGINE OFF, J BAIL OUT, [ ] TIME, ` DEBUG', 160, 252, C.GREY_L, 'tiny');
+    drawTextCentered(fb, 'I START, X ENGINE OFF, N JUMP HOME, J BAIL OUT, [ ] TIME, ` DEBUG', 160, 252, C.GREY_L, 'tiny');
   }
 }

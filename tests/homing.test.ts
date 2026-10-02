@@ -131,3 +131,63 @@ describe('down in a field', () => {
     expect(news.join(' ')).toMatch(/fetches it back/);
   });
 });
+
+describe('the docking computer', () => {
+  /** Ask for a homing and wait for the answer. */
+  function homed(seed: number): Sortie {
+    const s = new Sortie(spec(seed), map, objects);
+    s.step(frame({}, ['homing']));
+    for (let t = 0; t < TUNING.sortie.homingDelay + 0.5; t += TUNING.sim.dt) s.step(frame());
+    expect(s.homing).not.toBeNull();
+    return s;
+  }
+
+  it('jumps to finals and lands her at the homing field, hands off; the sortie ends as a good landing', () => {
+    const s = homed(11);
+    s.step(frame({}, ['jumpHome']));
+    expect(s.docking.active).toBe(true);
+    const field = s.homing!.field;
+    expect(s.player.pos.distTo(field.pos)).toBeLessThan(TUNING.docking.finalM + field.len);
+    let t = 0;
+    for (; t < 180 && !s.result; t += TUNING.sim.dt) s.step(frame({ throttle: 0.7 }));
+    expect(s.result, `${s.player.status} after ${t.toFixed(0)} s`).not.toBeNull();
+    const o = s.result!.outcome;
+    expect(o.kind).toBe('landed');
+    expect(o.pilot).toBe('fine');
+    expect(o.writtenUp).toBeUndefined();
+    expect(map.airfieldAt(s.player.pos.x, s.player.pos.z)).toBe(field);
+  });
+
+  it('lands her in Arcade too (quicker controls, more thrust)', () => {
+    const s = homed(15);
+    s.world.arcade = true;
+    s.world.stallGuard = true;
+    s.step(frame({}, ['jumpHome']));
+    for (let t = 0; t < 180 && !s.result; t += TUNING.sim.dt) s.step(frame({ throttle: 0.7 }));
+    expect(s.result?.outcome.kind).toBe('landed');
+    expect(s.result?.outcome.pilot).toBe('fine');
+  });
+
+  it('moving the stick takes her back', () => {
+    const s = homed(12);
+    s.step(frame({}, ['jumpHome']));
+    for (let t = 0; t < 2; t += TUNING.sim.dt) s.step(frame());
+    expect(s.docking.active).toBe(true);
+    s.step(frame({ pitch: 0.8 }));
+    expect(s.docking.active).toBe(false);
+  });
+
+  it('won\'t jump without a homing, or with the enemy about', () => {
+    const s = new Sortie(spec(13), map, objects);
+    s.step(frame({}, ['jumpHome']));
+    expect(s.docking.active).toBe(false);
+    expect(s.prompts.join(' ')).toMatch(/HOMING FIRST/);
+    const h = homed(14);
+    h.world.raids[0].spawn(h.world, h.world.rng);
+    const q = h.world.planes.find((p) => p.side === 'lw')!;
+    q.fs.setAirborne(h.player.pos.clone().add(new Vec3(2000, 0, 0)), 0, 100);
+    h.step(frame({}, ['jumpHome']));
+    expect(h.docking.active).toBe(false);
+    expect(h.prompts.join(' ')).toMatch(/ENEMY/);
+  });
+});

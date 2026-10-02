@@ -91,6 +91,8 @@ export class World {
   /** Player assists (from settings; kept with the world so a replay matches). */
   stallGuard = false;
   bigTargets = false;
+  /** Arcade mode: the player's aircraft is quicker and tougher, and never blacks out. */
+  arcade = false;
   readonly bullets: Bullet[] = [];
   readonly particles: Particle[] = [];
   readonly parachutes: Parachute[] = [];
@@ -228,6 +230,7 @@ export class World {
     if (!e) { e = this.makeEnv(p); this.envCache.set(p.id, e); }
     e.autoRudder = p.isPlayer ? this.autoRudder : true;
     e.stallGuard = p.isPlayer && this.stallGuard;
+    e.arcade = p.isPlayer && this.arcade;
     e.wind = this.weather.wind;
     return e;
   }
@@ -403,7 +406,8 @@ export class World {
       if (dv !== p.modsVersion || (this.tick + p.id) % 50 === 0) { p.mods = flightMods(p.damage, p.type); p.modsVersion = dv; }
       p.pilot.penalty = (p.damage.pilot === 'wounded' ? 0.8 : 0) + p.fatigue * 0.4;
       stepFlight(p.fs, p.ctl, this.envFor(p), p.mods, dt, this.rng);
-      p.pilot.step(p.fs.nz, dt);
+      // Arcade: no greying or blacking out for the player.
+      p.pilot.step(p.isPlayer && this.arcade ? Math.min(p.fs.nz, 1) : p.fs.nz, dt);
       if (p.flash > 0) p.flash -= dt;
       this.damageStep(p, dt);
       if (this.balloons.length && p.status === 'flying' && p.pos.y < 2500) this.balloonStep(p);
@@ -527,7 +531,9 @@ export class World {
         this.puff(world, 'spark', 0.6, 0.15, p.fs.vel.clone().scale(0.9));
         p.flash = 0.12;
         p.flashParts = 1 << zonePart(h.zone.id);
-        const evs = applyHit(p.damage, p.type, h.zone.id, b.damage, b.explosive, b.ownerId, this.rng);
+        const A = TUNING.arcade;
+        const dmg = !this.arcade || !me ? b.damage : b.ownerId === me.id ? b.damage * A.damageDealt : p === me ? b.damage * A.damageTaken : b.damage;
+        const evs = applyHit(p.damage, p.type, h.zone.id, dmg, b.explosive, b.ownerId, this.rng);
         this.emit({ kind: p.isPlayer ? 'playerHit' : 'hit', planeId: p.id, otherId: b.ownerId, zone: h.zone.id }, false);
         for (const e of evs) this.onDamageEvent(p, e, b.ownerId);
         p.brain?.onHit?.(p, b.ownerId, this.ctx);

@@ -4,7 +4,7 @@ import { Rng } from '../src/core/rng';
 import { GroundModel } from '../src/sim/ground';
 import { Raid } from '../src/sim/raid';
 import { World } from '../src/sim/world';
-import { enemyGroups } from '../src/screens/spotting';
+import { clockCall, enemyGroups, pointerDirection } from '../src/screens/spotting';
 import { TUNING } from '../src/tuning';
 
 const flat: GroundModel = { heightAt: () => 0, surfaceAt: () => 'pasture' };
@@ -40,5 +40,37 @@ describe('spotting groups', () => {
     expect(g[0].reported).toBe(true);
     expect(g[0].estimate).toBeGreaterThan(0);
     expect(g[0].pos.y).toBeCloseTo(4500 + r.heightError, 0); // the radar's height, errors and all
+  });
+});
+
+describe('the off-screen arrow (playtest: it pointed the wrong way and flicked sides)', () => {
+  // Camera space: [right, up, forward].
+  it('points to the side the target is on, ahead or behind', () => {
+    expect(pointerDirection([-500, 0, 800]).dx).toBeLessThan(0); // ahead-left: left
+    expect(pointerDirection([-500, 0, -800]).dx).toBeLessThan(0); // behind-left: still left (was right)
+    expect(pointerDirection([500, 0, -800]).dx).toBeGreaterThan(0); // behind-right: right
+  });
+
+  it('as you turn towards a target behind you, the arrow stays on the same side until it comes round', () => {
+    // The target sits 2 km away; the pilot turns left towards it from facing directly away.
+    for (let a = 175; a >= 30; a -= 5) {
+      const r = (a * Math.PI) / 180;
+      const t = [-Math.sin(r) * 2000, 0, Math.cos(r) * 2000]; // target to the left, `a` degrees off the nose
+      expect(pointerDirection(t).dx, `${a} degrees off`).toBeLessThan(0);
+    }
+  });
+
+  it('behind, it points mostly sideways (turn), not down', () => {
+    const d = pointerDirection([-200, -50, -1500]);
+    expect(Math.abs(d.dx)).toBeGreaterThan(Math.abs(d.dy));
+  });
+
+  it('calls the clock position like a pilot', () => {
+    expect(clockCall([0, 0, 1000])).toBe("12 O'CLOCK");
+    expect(clockCall([1000, 0, 0])).toBe("3 O'CLOCK");
+    expect(clockCall([0, 0, -1000])).toBe("6 O'CLOCK");
+    expect(clockCall([-1000, 0, 0])).toBe("9 O'CLOCK");
+    expect(clockCall([866, 400, -500])).toBe("4 O'CLOCK HIGH"); // 120 degrees right, above
+    expect(clockCall([-500, -400, 866])).toBe("11 O'CLOCK LOW"); // 30 degrees left, below
   });
 });
