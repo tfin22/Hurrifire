@@ -584,3 +584,18 @@ unchanged.
 - **Bigger targets.** Big targets now scales enemies up to 3 times their
   size, from 2. They're true size inside 40 m and grow to full scale by
   350 m. The player's rounds still hit them as drawn.
+
+## Updates show up straight away
+
+The offline cache served its saved copy of the game first and refreshed it
+in the background, so the first visit after a deploy showed the old
+version. Its name was also bumped by hand (`scramble-v2`), and had been
+forgotten for several builds. Now:
+
+- **The page is network-first.** Online, you always get the newest build.
+  The cached copy is only the fallback when offline. The manifest and icon
+  stay cache-first.
+- **The cache name stamps itself.** The build fingerprints the game (a
+  hash of `dist/index.html`) into the service worker's cache name, so each
+  build starts a fresh cache and the old one is deleted. `check-size`
+  fails the build if the stamp is missing.
