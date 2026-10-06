@@ -39,6 +39,8 @@ export interface FlownSortie {
   rewind(): void;
   /** The field given in the last homing (marked on screen). */
   readonly homing?: Homing | null;
+  /** Arcade's jump to the raid after a real take-off: why not now, or null if it can (RAF sortie only). */
+  raidJumpRefusal?(): string | null;
   /** The docking computer (jump to finals and autoland), where the sortie has one. */
   readonly docking?: { readonly active: boolean };
 }
@@ -57,6 +59,7 @@ export class SortieScreen extends FlightScreen {
   private rtAge = 99;
   private promptShown = 0;
   private finishing = -1;
+  private raidJumpHinted = false;
   /** Drop back to x1 when the enemy is near (not in a replay). */
   protected dropCompression = true;
 
@@ -92,6 +95,7 @@ export class SortieScreen extends FlightScreen {
     if (s.consume('tallyHo')) this.cmd('tallyHo');
     if (s.consume('homing')) this.cmd('homing');
     if (s.consume('jumpHome')) this.cmd('jumpHome');
+    if (s.consume('jumpRaid')) this.cmd('jumpRaid');
     for (const o of ['order1', 'order2', 'order3', 'order4'] as const) if (s.consume(o)) this.cmd(o);
     if (s.consume('start')) this.startPress();
     if (s.consume('primer')) this.cmd('primer');
@@ -125,6 +129,11 @@ export class SortieScreen extends FlightScreen {
     }
     this.rtAge += TUNING.sim.dt;
     while (this.promptShown < so.prompts.length) this.flashMessage(so.prompts[this.promptShown++], 2.5);
+    // Arcade after a real take-off: say once that the jump to the raid is there.
+    if (!this.raidJumpHinted && this.app.settings.arcade && this.world.tick % 25 === 0 && so.raidJumpRefusal?.() === null) {
+      this.raidJumpHinted = true;
+      this.flashMessage('JUMP TO RAID WHEN READY', 3);
+    }
     // Anything hostile within visual range: back to x1.
     if (this.dropCompression && this.timeIdx > 0 && this.world.tick % 10 === 0) {
       const me = this.player;
@@ -186,6 +195,8 @@ export class SortieScreen extends FlightScreen {
       return [{ action: 'primer', label: 'PRIMER' }, { action: 'mags', label: 'MAGS' }, { action: 'starter', label: 'STARTER' }];
     }
     const b = super.contextButtons();
+    // Arcade after a real take-off: straight to the raid once she's flying.
+    if (this.app.settings.arcade && so.raidJumpRefusal && so.raidJumpRefusal() === null) b.unshift({ action: 'jumpRaid', label: 'JUMP TO RAID', lit: true });
     // Ask the controller the way home: not in the middle of a fight.
     const me = this.player;
     const fighting = this.world.planes.some((q) => q.side !== me.side && q.alive && q.pos.distTo(me.pos) < TUNING.sim.compressionDropRange);

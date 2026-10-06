@@ -562,3 +562,25 @@ The music now plays about 3 dB quieter (channel level 0.7 instead of 1.0),
 so it sits under the sound effects rather than competing with them. The
 effects, and the bell and phone that cut through the menu music, are
 unchanged.
+
+## Arcade take-off, hit feedback, bigger targets (playtest)
+
+- **Arcade keeps the take-off.** Arcade is now two modes: **Arcade** (the
+  default) and **Arcade, air start**, the old behaviour. MODE in Settings
+  cycles Arcade, Arcade air start, Assist, Authentic. In Arcade, the
+  scramble is as it was: readiness, START, the take-off run. The raid is
+  already on its way, and the enemy is a grade softer. Once you're more
+  than 100 m up, **JUMP TO RAID** (key R) puts the whole squadron, in
+  formation, ahead of the raid wherever it now is. It's the same picture
+  as the air start: about 7 km off, to one side, 800 m above, turned in.
+  It works once a sortie, and not with the enemy already in sight.
+- **Hit feedback.** Your rounds striking home now:
+  - make a bright metallic tick, rate-limited so the eight Brownings don't
+    turn it into a buzz;
+  - put a flashing X of ticks on the aircraft being hit, in any view.
+  When one you shot goes down, a big banner names it ("HE 111
+  DESTROYED!") with a tally for the sortie, and the phone pulses. An enemy
+  you've hit catching fire says so.
+- **Bigger targets.** Big targets now scales enemies up to 3 times their
+  size, from 2. They're true size inside 40 m and grow to full scale by
+  350 m. The player's rounds still hit them as drawn.

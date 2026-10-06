@@ -134,10 +134,13 @@ const EASIER: Record<SkillLevel, SkillLevel> = { experte: 'average', average: 'g
  * the air above and to one side of the raid's track, the raid already
  * crossing the coast, and the enemy a grade less skilled.
  */
-export function arcadeSpec(spec: SortieSpec): SortieSpec {
+export function arcadeSpec(spec: SortieSpec, takeoff = false): SortieSpec {
   const A = TUNING.arcade;
   const raids = spec.raids.map((r) => ({ ...r, groups: r.groups.map((g) => ({ ...g, skill: EASIER[g.skill] })) }));
   if (spec.start === 'air' || !raids.length) return { ...spec, raids };
+  // Take-off kept: the scramble as it was, with the raid already on its way
+  // (JUMP TO RAID takes the squadron to it once airborne).
+  if (takeoff) { raids[0] = { ...raids[0], delay: 0 }; return { ...spec, raids }; }
   const r = raids[0] = { ...raids[0], delay: 0, start: raids[0].entry.clone().lerp(raids[0].start, 0.05) };
   // Ahead of the raid on its track and off to one side, turned in towards it.
   const tx = r.target.x - r.start.x, tz = r.target.z - r.start.z, l = Math.hypot(tx, tz) || 1;
@@ -157,6 +160,10 @@ export class Sortie {
   readonly base: Airfield;
   readonly player: Plane;
   readonly formation: Plane[] = [];
+  /** Each formation member's slot (body-frame offset from the leader). */
+  private slots: Vec3[] = [];
+  /** Arcade: the squadron has jumped to the raid (once a sortie). */
+  jumpedToRaid = false;
   readonly ships: Ship[] = [];
   phase: SortiePhase;
   engaged = false;
@@ -220,7 +227,7 @@ export class Sortie {
     this.names.set(p.id, spec.playerName);
     const n = spec.others.length + 1;
     const leaderIndex = spec.leading ? 0 : 1;
-    const slots = formationSlots(n, spec.formation ?? 'vic');
+    const slots = (this.slots = formationSlots(n, spec.formation ?? 'vic'));
     const tx = Math.sin(tdir), tz = Math.cos(tdir), rx = Math.cos(tdir), rz = -Math.sin(tdir);
     const startBack = this.base.half - 120;
     const all: Plane[] = [];
@@ -338,6 +345,7 @@ export class Sortie {
         break;
       case 'tallyHo': this.tallyHo(); break;
       case 'jumpHome': this.jumpHome(); break;
+      case 'jumpRaid': this.jumpToRaid(); break;
       case 'homing':
         if (this.homingDue >= 0 || fs.onGround) break;
         this.controller.say(this.time, RT.homingReq(this.spec.squadron, this.controller.callsign), 'player', false);
@@ -442,6 +450,55 @@ export class Sortie {
     if (this.homingDue >= 0 && this.time >= this.homingDue) this.giveHoming();
     this.trackSightings();
     this.updatePhase();
+  }
+
+  /** The raid to jump to: the controller's, or the first still coming in. */
+  private raidToJoin(): Raid | null {
+    const live = (r: Raid) => r.started && (!r.spawned || r.planes.some((q) => q.alive)) && (r.phase === 'inbound' || r.phase === 'bombRun');
+    const t = this.controller.targetRaid;
+    return t && live(t) ? t : this.world.raids.find(live) ?? null;
+  }
+
+  /** Why the squadron can't jump to the raid now, or null if it can. */
+  raidJumpRefusal(): string | null {
+    const p = this.player;
+    if (this.jumpedToRaid || this.engaged) return 'ALREADY IN THE FIGHT';
+    if (p.status !== 'flying' || p.fs.onGround || p.fs.agl < TUNING.arcade.jumpMinAgl) return 'GET AIRBORNE FIRST';
+    if (!this.raidToJoin()) return 'NO RAID TO JOIN';
+    for (const q of this.world.planes) if (q.side !== p.side && q.alive && q.pos.distTo(p.pos) < TUNING.docking.clearOfEnemy) return 'THE ENEMY IS ALREADY IN SIGHT';
+    return null;
+  }
+
+  /**
+   * Arcade, after a real take-off: the whole squadron jumps to the raid,
+   * ahead of it on its track, off to one side and above, turned in towards
+   * it: the same picture as the arcade air start, wherever the raid now is.
+   */
+  private jumpToRaid(): void {
+    const why = this.raidJumpRefusal();
+    if (why) { this.prompts.push(why); return; }
+    const A = TUNING.arcade;
+    const r = this.raidToJoin()!;
+    const plot = r.plot;
+    let dx = r.vel.x, dz = r.vel.z;
+    if (Math.hypot(dx, dz) < 1) { dx = r.spec.target.x - plot.x; dz = r.spec.target.z - plot.z; }
+    const l = Math.hypot(dx, dz) || 1;
+    dx /= l; dz /= l;
+    const pos = new Vec3(plot.x + dx * A.startAhead - dz * A.startAside, r.alt + A.startAbove, plot.z + dz * A.startAhead + dx * A.startAside);
+    const hdg = Math.atan2(plot.x - pos.x, plot.z - pos.z);
+    const fx = Math.sin(hdg), fz = Math.cos(hdg), rx = Math.cos(hdg), rz = -Math.sin(hdg);
+    const leader = this.leader;
+    this.formation.forEach((q, i) => {
+      if (q.status !== 'flying') return;
+      const s = this.slots[i] ?? new Vec3();
+      q.fs.setAirborne(new Vec3(pos.x + rx * s.x + fx * s.z, pos.y + s.y, pos.z + rz * s.x + fz * s.z), hdg, 120);
+      q.prevPos.copy(q.pos);
+      const b = q.brain;
+      if (b instanceof WingmanBrain && b.phase !== 'air') { b.phase = 'air'; b.fighter.opts.leader = leader; b.fighter.state = 'formation'; }
+    });
+    this.jumpedToRaid = true;
+    this.controller.say(this.time, `${this.spec.squadron} Leader: Bandits ahead. Going in.`, 'player', false);
+    this.prompts.push('RAID AHEAD');
   }
 
   /** The docking computer: straight onto finals for the homing field. */

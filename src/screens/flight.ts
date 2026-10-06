@@ -263,8 +263,13 @@ export class FlightScreen implements Screen {
         this.app.sound(this.fxRng.chance(0.6) ? 'clang' : 'thud', 0.9, 0.85 + this.fxRng.next() * 0.4);
         break;
       case 'hit':
-        // Our rounds striking home: a faint thud.
-        if (e.otherId === me.id) this.app.sound('thud', 0.35, 1.3);
+        // Our rounds striking home: a tick you can hear over the guns, and a marker on him.
+        if (e.otherId === me.id) {
+          this.hitMarkT = TUNING.feedback.hitMarker;
+          this.hitTargetId = e.planeId;
+          const now = performance.now();
+          if (now - this.lastTick > TUNING.feedback.tickEveryMs) { this.lastTick = now; this.app.sound('tick', 0.75, 0.9 + this.fxRng.next() * 0.25); }
+        }
         break;
       case 'explode': {
         const p = e.pos ?? w.planeById(e.planeId)?.pos;
@@ -278,11 +283,14 @@ export class FlightScreen implements Screen {
       case 'shotDown':
         if (e.otherId === me.id) {
           const v = w.planeById(e.planeId);
-          this.flashMessage(v ? `${v.type.short.toUpperCase()} GOING DOWN!` : 'HE\'S GOING DOWN!', 3);
+          this.kills++;
+          this.killBanner = { text: `${v ? v.type.short.toUpperCase() : 'BANDIT'} DESTROYED!`, t: TUNING.feedback.killBanner };
+          haptics.pulse([30, 30, 60]);
         } else if (e.planeId === me.id) this.flashMessage('YOU\'VE HAD IT - GET OUT!', 4);
         break;
       case 'fire':
         if (e.planeId === me.id) { this.flashMessage('FIRE! BAIL OUT!', 4); haptics.pulse([80, 40, 80]); }
+        else if (w.planeById(e.planeId)?.damage.by[me.id] && w.planeById(e.planeId)?.side !== me.side) this.flashMessage('HE\'S ON FIRE!', 2);
         break;
       case 'glycol':
         if (e.planeId === me.id) this.flashMessage('GLYCOL LEAK - WATCH THE TEMPERATURE', 3);
@@ -336,6 +344,12 @@ export class FlightScreen implements Screen {
   protected debugAf = 0;
   protected debugDmg = 0;
   protected hitFlash = 0;
+  /** Hit feedback: the marker on the target we're hitting, and the banner when one goes down. */
+  private hitMarkT = 0;
+  private hitTargetId = -1;
+  private lastTick = 0;
+  private kills = 0;
+  private killBanner: { text: string; t: number } | null = null;
   protected woundFlash = 0;
 
   /** Commands queued for the next tick (recorded for replays). */
@@ -445,6 +459,8 @@ export class FlightScreen implements Screen {
     if (!this.player.fs.onGround) this.switchOffHint = false;
     if (this.messageT > 0) this.messageT -= TUNING.sim.dt;
     if (this.hitFlash > 0) this.hitFlash -= TUNING.sim.dt;
+    if (this.hitMarkT > 0) this.hitMarkT -= TUNING.sim.dt;
+    if (this.killBanner && (this.killBanner.t -= TUNING.sim.dt) <= 0) this.killBanner = null;
     if (this.woundFlash > 0) this.woundFlash -= TUNING.sim.dt * 0.7;
   }
 
@@ -594,6 +610,7 @@ export class FlightScreen implements Screen {
     }
     if (inside && !s.lookBack && !headTurned) this.drawAssist(fb);
     this.drawHud(fb);
+    this.drawHitFeedback(fb, inside && s.lookBack);
     if (this.messageT > 0) viewMessage(fb, this.message, 40, C.WHITE);
     if (this.timeIdx > 0) drawText(fb, `TIME x${TUNING.sim.timeCompression[this.timeIdx]}`, 250, 22, C.SIGHT, 'tiny');
     if (this.paused) this.drawPause(fb);
@@ -667,6 +684,36 @@ export class FlightScreen implements Screen {
       }
     }
     fb.resetClip();
+  }
+
+  /**
+   * Hit feedback, for the arcade feel: an X of ticks on the aircraft our
+   * rounds are striking (it flashes while the hits keep coming), and a big
+   * banner with the tally when one goes down.
+   */
+  protected drawHitFeedback(fb: FrameBuffer, lookingBack: boolean): void {
+    const cam = this.cam;
+    if (this.hitMarkT > 0 && !lookingBack) {
+      const q = this.world.planeById(this.hitTargetId);
+      const out = { x: 0, y: 0, z: 0 };
+      if (q && cam.project(q.pos, out) && out.x > cam.vx0 && out.x < cam.vx1 && out.y > cam.vy0 && out.y < cam.vy1) {
+        fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);
+        const r0 = 5, r1 = 10;
+        const c = (this.world.tick >> 1) & 1 ? C.WHITE : C.FIRE_Y;
+        for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+          line(fb, out.x + sx * r0, out.y + sy * r0, out.x + sx * r1, out.y + sy * r1, c);
+          line(fb, out.x + sx * r0 + 1, out.y + sy * r0, out.x + sx * r1 + 1, out.y + sy * r1, c);
+        }
+        fb.resetClip();
+      }
+    }
+    const k = this.killBanner;
+    if (k) {
+      const y = 56;
+      drawTextScaled(fb, k.text, 160 - (scaledWidth(k.text, 2) >> 1), y, (this.world.tick >> 3) & 1 ? C.FIRE_Y : C.SIGHT, 2, C.BLACK);
+      const tally = `KILLS THIS SORTIE: ${this.kills}`;
+      drawText(fb, tally, 160 - (textWidth(tally, 'tiny') >> 1), y + 18, C.WHITE, 'tiny', C.BLACK);
+    }
   }
 
   protected drawSight(fb: FrameBuffer): void {

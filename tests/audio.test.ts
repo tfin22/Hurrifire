@@ -15,7 +15,7 @@ describe('the sample bank', () => {
     }
   });
   it('has the sounds the game asks for', () => {
-    for (const n of ['merlin', 'merlinIdle', 'db601', 'db601Idle', 'drone', 'browning8', 'clang', 'explode', 'cough', 'buffet', 'bell', 'phone', 'rt', 'pump', 'wind', 'starter']) expect(S[n], n).toBeDefined();
+    for (const n of ['tick', 'merlin', 'merlinIdle', 'db601', 'db601Idle', 'drone', 'browning8', 'clang', 'explode', 'cough', 'buffet', 'bell', 'phone', 'rt', 'pump', 'wind', 'starter']) expect(S[n], n).toBeDefined();
   });
   it('the Merlin and the DB 601 are different notes', () => {
     expect(S.merlin.data.length).not.toBe(S.db601.data.length);

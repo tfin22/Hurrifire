@@ -198,6 +198,10 @@ export function buildSamples(seed = 1940): Record<string, Sample> {
   // Being hit, and things blowing up.
   S.clang = { data: metal(R, 0.35, 420, [1, 2.76, 5.4, 8.9], 14), rate: R, loop: false };
   S.thud = { data: noiseHit(rng, R, 0.18, 30, 0.5, 0.25), rate: R, loop: false };
+  // Our rounds striking home: a bright, short metallic tick over a click.
+  const tickRing = metal(R, 0.08, 1500, [1, 2.6, 4.1], 70);
+  const tickClick = noiseHit(rng, R, 0.08, 220, 0, 0.9);
+  S.tick = { data: crush8(normalise(tickRing.map((v, i) => v * 0.7 + tickClick[i] * 0.5))), rate: R, loop: false };
   S.explode = { data: noiseHit(rng, R, 1.4, 3.2, 0.2, 0.12), rate: R, loop: false };
   // Wind, buffet, R/T: loops of filtered noise.
   S.wind = { data: crush8(normalise(lowpass(build(R, 1, () => rng.next() * 2 - 1), 0.12))), rate: R, loop: true };

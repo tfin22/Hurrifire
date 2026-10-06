@@ -343,6 +343,8 @@ export const TUNING = {
     startAhead: 6000,
     startAside: 4000,
     startAbove: 800,
+    /** JUMP TO RAID (after a real take-off) needs this much height under you (m). */
+    jumpMinAgl: 100,
   },
 
   /** The docking computer: jump to final approach after a homing. */
@@ -356,12 +358,19 @@ export const TUNING = {
     takeOver: 0.35,
   },
 
+  /** Hit feedback: how long the hit marker and kill banner show (s), and the tick's rate limit (ms). */
+  feedback: {
+    hitMarker: 0.22,
+    killBanner: 3,
+    tickEveryMs: 55,
+  },
+
   targets: {
     /** Big targets: enemies are drawn and hit this much larger at range... */
-    scale: 2.0,
+    scale: 3.0,
     /** ...growing from true size inside `near` metres to full scale beyond `far`. */
-    near: 60,
-    far: 300,
+    near: 40,
+    far: 350,
   },
 
   effects: {
