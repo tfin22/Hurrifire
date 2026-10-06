@@ -6,6 +6,8 @@ export interface Settings {
    * hits harder, and starts in the air near the raid.
    */
   arcade: boolean;
+  /** Arcade keeps the scramble and take-off (then JUMP TO RAID), rather than starting in the air. */
+  arcadeTakeoff: boolean;
   /** Assist adds lead indicator, spotting markers, glide ring, approach aid, one-button start. */
   assist: boolean;
   /** Optional ammunition bar on the HUD (forced off in Authentic). */
@@ -37,6 +39,7 @@ const KEY = 'scramble.settings.v1';
 
 export const defaultSettings = (): Settings => ({
   arcade: true,
+  arcadeTakeoff: true,
   assist: true,
   ammoBar: false,
   autoRudder: true,

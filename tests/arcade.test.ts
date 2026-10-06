@@ -104,3 +104,41 @@ describe('arcade mode', () => {
     expect(run(true, false)).toBeGreaterThan(run(false, false));
   });
 });
+
+describe('arcade with a real take-off', () => {
+  const frame = (cmds?: ControlFrame['cmds']): ControlFrame => ({ ...pull(0), throttle: 0.8, ...(cmds ? { cmds } : {}) });
+
+  it('keeps the scramble from readiness, with the raid already on its way and softer', () => {
+    const base = spec(21, { others: [{ name: 'Ashworth', skill: 'average', fatigue: 0 }] });
+    const a = arcadeSpec(base, true);
+    expect(a.start).toBe('readiness');
+    expect(a.airStart).toBeUndefined();
+    expect(a.raids[0].delay).toBe(0);
+    expect(a.raids[0].groups.some((g) => g.skill === 'experte')).toBe(false);
+  });
+
+  it('JUMP TO RAID is refused on the ground, then takes the whole squadron to the raid once airborne', () => {
+    const base = spec(22, { others: [{ name: 'Ashworth', skill: 'average', fatigue: 0 }, { name: 'Bellamy', skill: 'green', fatigue: 0 }] });
+    const s = new Sortie(arcadeSpec(base, true), map, objects);
+    s.step(frame(['jumpRaid']));
+    expect(s.jumpedToRaid).toBe(false);
+    expect(s.prompts.join(' ')).toMatch(/AIRBORNE/);
+    // Airborne over the field, the others still on the ground.
+    const home = s.base.pos;
+    s.player.fs.setAirborne(new Vec3(home.x, home.y + 400, home.z), 0, 110);
+    for (let t = 0; t < 5; t += TUNING.sim.dt) s.step(frame());
+    s.step(frame(['jumpRaid']));
+    expect(s.jumpedToRaid).toBe(true);
+    const r = s.world.raids[0];
+    const A = TUNING.arcade;
+    expect(Math.hypot(s.player.pos.x - r.plot.x, s.player.pos.z - r.plot.z)).toBeLessThan(Math.hypot(A.startAhead, A.startAside) + 500);
+    expect(s.player.pos.y).toBeGreaterThan(r.alt);
+    for (const q of s.formation) {
+      expect(q.fs.onGround, q.callsign).toBe(false);
+      expect(q.pos.distTo(s.player.pos), q.callsign).toBeLessThan(600);
+    }
+    // Once only.
+    s.step(frame(['jumpRaid']));
+    expect(s.prompts.join(' ')).toMatch(/ALREADY/);
+  });
+});

@@ -101,7 +101,7 @@ export class Flow {
 
   fly(spec: SortieSpec, campaign?: { done: (r: SortieResult, replay: (back: () => void) => void) => void; quit: () => void }): void {
     // Arcade: straight into the air near the raid, against a less skilled enemy.
-    if (this.app.settings.arcade) spec = arcadeSpec(spec);
+    if (this.app.settings.arcade) spec = arcadeSpec(spec, this.app.settings.arcadeTakeoff);
     if (!campaign) for (const af of this.game.map.airfields) { af.craters = []; af.damaged = 0; }
     this.flySortie(() => new Sortie(spec, this.game.map, this.game.objects), (res, replay) => {
       if (campaign) { campaign.done(res, replay); return; }

@@ -23,7 +23,7 @@ const ENGINE_RPM: Record<string, number> = { merlin: 2600, db601: 2400, radial: 
 
 /** Effect priorities: a more important sound steals a channel from a lesser one. */
 const PRIORITY: Record<string, number> = {
-  explode: 6, clang: 5, cough: 4, cannon: 4, thud: 3, enemyFire: 3, starter: 4, rt: 2, pump: 1, click: 1, bell: 5, phone: 5, thump: 3,
+  explode: 6, clang: 5, tick: 2, cough: 4, cannon: 4, thud: 3, enemyFire: 3, starter: 4, rt: 2, pump: 1, click: 1, bell: 5, phone: 5, thump: 3,
 };
 
 interface Layer { src: AudioBufferSourceNode; gain: GainNode }
