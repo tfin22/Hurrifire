@@ -599,3 +599,100 @@ forgotten for several builds. Now:
   hash of `dist/index.html`) into the service worker's cache name, so each
   build starts a fresh cache and the old one is deleted. `check-size`
   fails the build if the stamp is missing.
+
+## The fight around you: squadron, escort and bomber crews
+
+Playtest: "Am I alone? I don't see others in my flight. The escort ignores
+me when I attack the bombers, and the bombers plough on regardless." All
+three were true in the code.
+
+- **The squadron goes in with you.** The wingmen were there all along,
+  flying behind you in formation, but they hold fire until tally-ho. When
+  you lead (Scramble, and in the campaign from Flight Lieutenant), nobody
+  called it unless you pressed T. They now go in by themselves when it's
+  obvious:
+  - you open fire with the enemy within 9 km;
+  - an enemy comes within 2.5 km;
+  - one of the formation is hit.
+  Flying as a wingman, the leader calls it. In a 4-minute headless probe
+  of four arcade raids, the squadron engaged in 1 of 4 before and 4 of 4
+  now. In one run before, it lost 5 aircraft while still holding fire.
+- **The squadron talks.** Section callsigns (Red, Yellow, Blue, Green;
+  you're the Leader) on the R/T:
+  - a wingman calls "Bandits! eleven o'clock, below!" when he sees them
+    first;
+  - "Gannet Leader, break left!" when something is on your tail;
+  - their kills, being hit and baling out.
+  The R/T panel now queues messages so each stays up long enough to
+  read. Before, a burst of calls replaced one another a tick apart. Urgent
+  messages still drop time compression the moment they're sent.
+- **The escort answers the bombers.** A bomber being hit calls it in. The
+  close escort and top cover learn who is shooting after a reaction delay
+  (experte 2 s, average 3.5 s, green 6 s) if they're within 5 km, and
+  go for that fighter first. Before, an escort only reacted to fighters it
+  happened to spot itself, so an attack from below and behind went
+  unanswered.
+- **Bomber crews have nerve.** Each crew starts with nerve by skill (green
+  0.75, average 1, experte 1.3). It is worn down by:
+  - bursts of fire (0.1, at most once every 2 s);
+  - a fighter coming head-on, guns going or passing within 200 m (0.3,
+    once per pass however many come through);
+  - a bomber within 800 m going down (0.25).
+  On the bomb run the losses are halved: the crews are committed. Left
+  alone for 15 s it slowly comes back. At zero the crew jettisons and
+  dives away for France in a sound aircraft, which counts towards turning
+  the raid back. Green crews break first. The Hurricane's head-on attack
+  now does what it did in 1940.
+- **The raid's plot is the bombers still in formation**, not the centroid
+  of every bomber. Otherwise a few heading home dragged the plot away from
+  the target and the raid never started its bomb run.
+
+Two older bugs turned up while testing this:
+
+- **A belly slide went on for kilometres.** Sliding friction was 0.55 ×
+  the surface's *rolling* friction (about 0.04 on grass): about 2.9 km
+  from 47 m/s. The landing model's roll-out estimate assumed 0.5. Sliding
+  now uses 0.45 plus the surface's rolling friction, so it stops in a few
+  hundred metres.
+- **A dead-stick landing could leave the sortie running.** Coming to rest
+  only counted with the throttle closed or the engine switched off. A
+  dead engine with the throttle left open never ended the landing. Any
+  engine that isn't running now counts. Also, on the 109 side, being back
+  over France only ended the sortie safely if you had crossed the English
+  coast. A raid broken up over the Channel now counts too.
+
+## Enemy difficulty
+
+Playtest: "an option to set enemy difficulty? From flight school level to
+normal to Spanish Civil War vet."
+
+A setting, **ENEMY**, with three levels. Every enemy pilot already has a
+grade (green, average, experte), and everything they do comes from it:
+spotting, aim, fire range, energy discipline, G, reaction time, an escort's
+response to the bombers' call, a bomber crew's nerve and its gunners' aim.
+So the setting moves the grade and scales on top:
+
+| Level | Grade | Aim | Aim wander | Eyes | Thinking | G |
+|---|---|---|---|---|---|---|
+| Flight school | one greener | ×0.7 | ×3.5 | ×0.8 | ×1.4 slower | −0.5 |
+| Normal | as in 1940 | — | — | — | — | — |
+| Spain veterans | one sharper | ×1.12 (max 0.95) | ×0.6 | ×1.15 | ×0.8 | +0.3 |
+
+- It applies to whoever is the player's enemy: the Luftwaffe normally, the
+  RAF when you fly the 109.
+- It's applied to each enemy pilot once, on their first step. Raids spawn
+  mid-sortie, so this catches everyone, however they were made.
+- It's kept with the world, so a replay matches.
+- Arcade's own grade softer still applies on top. Arcade on Normal plays as
+  before; Arcade on Flight School is all greens, sloppier still.
+- **Aim wander is a new knob**, used only by this setting. A grade's aim
+  alone barely mattered: a few metres of wander against a 10 m wingspan.
+  In a probe, a green 109 hosing from 520 m killed a Spitfire flying
+  straight as fast as an average one did. With ×3.5 wander, Flight School
+  leaves a Spitfire flying straight alive in 5 of 12 runs (Normal: 0), and
+  fires 3.5 times the ammunition doing it.
+- Veterans hold fire until 240 m. Against a target flying straight they
+  are a few seconds slower to make the kill than Normal. Against a pilot
+  who manoeuvres, they spot sooner, don't overshoot, and bunt away.
+- Settings only, not the pause menu. Changing it mid-sortie would leave
+  pilots already rated at the old level.

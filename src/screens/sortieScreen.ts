@@ -54,6 +54,7 @@ export class SortieScreen extends FlightScreen {
   private mapOpen = false;
   private plot = new OpsPlot();
   private rtShown = 0;
+  private rtHeard = 0;
   private rtText = '';
   private rtFrom = '';
   private rtAge = 99;
@@ -117,14 +118,17 @@ export class SortieScreen extends FlightScreen {
     super.tick();
     const so = this.sortie;
     if (this.world.tick % 50 === 0) this.plot.update(this.world.raids, this.world.time);
-    // New R/T messages.
+    // New R/T messages. Urgent ones drop time compression as soon as they're sent.
     const log = so.controller.log;
-    if (this.rtShown < log.length) {
+    for (; this.rtHeard < log.length; this.rtHeard++) if (log[this.rtHeard].urgent) this.timeIdx = 0;
+    // Shown in turn, each long enough to read; a long backlog skips to the latest few.
+    const read = this.rtText.length / 45 + 1.2;
+    if (this.rtShown < log.length && (this.rtAge >= read || !this.rtText)) {
+      if (log.length - this.rtShown > 3) this.rtShown = log.length - 3;
       const m = log[this.rtShown++];
       this.rtText = m.text;
       this.rtFrom = m.from;
       this.rtAge = 0;
-      if (m.urgent) this.timeIdx = 0;
       this.app.sound('rt');
     }
     this.rtAge += TUNING.sim.dt;

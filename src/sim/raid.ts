@@ -2,10 +2,12 @@
 // when RAF fighters get within range it becomes real aircraft in formation:
 // bomber vics stacked in a box, close escort weaving above and behind, top
 // cover higher still. It flies to the target, bombs, and goes home, unless
-// it is broken up and turned back first.
+// it is broken up and turned back first. A bomber under fire calls it in,
+// and the escort comes down on whoever is shooting.
 
 import { Vec3 } from '../core/math';
 import { Rng } from '../core/rng';
+import { TUNING } from '../tuning';
 import { AIRCRAFT, AircraftId } from '../content/aircraft';
 import { BomberBrain, RaidLink } from './ai/bomber';
 import { DefensiveCircle, FighterBrain } from './ai/fighter';
@@ -80,6 +82,10 @@ export class Raid implements RaidLink {
   readonly circle: DefensiveCircle = { centre: null, radius: 650, dir: 1, lastThreat: -100 };
   /** Direction towards the sun (top cover sits up-sun). */
   sun: Vec3 | null = null;
+  /** Who is shooting at the bombers: attacker id → first and latest report (s). */
+  readonly alarms = new Map<number, { first: number; last: number }>();
+  /** Bombers already counted as lost (for the crews alongside). */
+  private lost = new Set<number>();
 
   constructor(id: number, readonly spec: RaidSpec, rng: Rng) {
     this.id = id;
@@ -127,6 +133,24 @@ export class Raid implements RaidLink {
     this.drop?.(this, p, true);
   }
 
+  alarm(attackerId: number, time: number): void {
+    const a = this.alarms.get(attackerId);
+    if (a && time - a.last < TUNING.ai.escortAlarmMemory) a.last = time;
+    else this.alarms.set(attackerId, { first: time, last: time });
+  }
+
+  /** A bomber going down shakes the crews flying alongside it. */
+  private lossesSeen(time: number): void {
+    for (const b of this.bombers) {
+      if (b.status === 'flying' || this.lost.has(b.id)) continue;
+      this.lost.add(b.id);
+      for (const o of this.bombers) {
+        if (o === b || o.status !== 'flying' || !(o.brain instanceof BomberBrain)) continue;
+        if (o.pos.distTo(b.pos) < TUNING.ai.lossRange) o.brain.shake(o, TUNING.ai.nerveLoss, time);
+      }
+    }
+  }
+
   /** Set by the world: puts the bombs into the air. */
   drop: ((r: Raid, p: Plane, jettison: boolean) => void) | null = null;
 
@@ -144,7 +168,9 @@ export class Raid implements RaidLink {
       this.plot.addScaled(this.vel, dt);
       this.plot.y = this.alt;
     } else {
-      const live = (this.bombers.length ? this.bombers : this.escorts).filter((p) => p.alive);
+      // The formation is where the bombers still in it are, not the ones running for home.
+      const inFormation = this.bombers.filter((p) => p.alive && p.brain instanceof BomberBrain && p.brain.state !== 'straggler');
+      const live = inFormation.length ? inFormation : (this.bombers.length ? this.bombers : this.escorts).filter((p) => p.alive);
       if (live.length) {
         const c = new Vec3();
         const v = new Vec3();
@@ -154,6 +180,7 @@ export class Raid implements RaidLink {
       }
       const L = this.leader();
       if (L && L.brain instanceof BomberBrain) this.leg = L.brain.leg;
+      this.lossesSeen(time);
     }
     // Phases.
     const toTarget = Math.hypot(this.plot.x - this.target.x, this.plot.z - this.target.z);
@@ -223,7 +250,7 @@ export class Raid implements RaidLink {
         }
         p.fs.setAirborne(place(slot), hdg, this.speed + 10);
         if (first && (g.role === 'closeEscort' || g.role === 'topCover' || g.role === 'zerstorer')) {
-          p.brain = new FighterBrain({ leader: first, slot, escortOf: () => this.bombers, circle: g.type === 'bf110' ? this.circle : undefined });
+          p.brain = new FighterBrain({ leader: first, slot, escortOf: () => this.bombers, alarm: this.alarms, circle: g.type === 'bf110' ? this.circle : undefined });
         } else {
           // Free hunt / fighter-bombers: fly the route.
           p.brain = new FighterBrain({ waypoint: this.target.clone().add(new Vec3(0, g.altOffset, 0)) });

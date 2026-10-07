@@ -6,6 +6,7 @@ import type { App } from '../app';
 import type { ContextButton } from '../input/devices';
 import type { ControlFrame } from '../input/input';
 import { drawText, drawTextCentered } from '../render/font';
+import type { EnemyLevel } from '../sim/ai/types';
 import type { FrameBuffer } from '../render/framebuffer';
 import { C } from '../render/palette';
 import { TUNING } from '../tuning';
@@ -18,12 +19,13 @@ export class ReplayScreen extends SortieScreen {
   private ended = false;
   private blink = 0;
 
-  constructor(app: App, sortie: FlownSortie, private frames: readonly ControlFrame[], assists: { autoRudder: boolean; stallGuard: boolean; bigTargets: boolean; arcade: boolean }, private end: () => void) {
+  constructor(app: App, sortie: FlownSortie, private frames: readonly ControlFrame[], assists: { autoRudder: boolean; stallGuard: boolean; bigTargets: boolean; arcade: boolean; enemyLevel: EnemyLevel }, private end: () => void) {
     super(app, sortie, () => this.finish(), () => this.finish());
     this.world.autoRudder = assists.autoRudder;
     this.world.stallGuard = assists.stallGuard;
     this.world.bigTargets = assists.bigTargets;
     this.world.arcade = assists.arcade;
+    this.world.enemyLevel = assists.enemyLevel;
     this.view = 'chase';
     this.touchMode = 'menu';
     this.dropCompression = false;

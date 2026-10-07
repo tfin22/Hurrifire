@@ -46,6 +46,8 @@ export class Plane {
   damage: DamageState;
   brain: Brain | null = null;
   skill: Skill;
+  /** Enemy difficulty applied to this pilot's skill (once, on its first step). */
+  rated = false;
   /** Fatigue 0..1 (campaign): slows spotting and lowers G tolerance. */
   fatigue = 0;
   /** Crew still aboard. */

@@ -16,6 +16,7 @@ import { WorldObjects } from '../content/world/objects';
 import type { Ship } from '../render/worldLayer';
 import { ControlFrame, SimCmd } from '../input/input';
 import { TUNING } from '../tuning';
+import { threatGeometry } from './ai/spotting';
 import { skillFor, SkillLevel } from './ai/types';
 import { Base, SquadronOrder, WingmanBrain } from './ai/wingman';
 import { assessClaims, Claim, Engagement, tally } from './claims';
@@ -184,6 +185,11 @@ export class Sortie {
   /** The airfield the controller last gave a homing to (shown on screen). */
   homing: Homing | null = null;
   private homingDue = -1;
+  /** Squadron R/T: when the last "break!" and "bandits!" calls went out (s). */
+  private lastBreakCall = -100;
+  private lastSightingCall = -100;
+  /** Events the squadron R/T has already answered. */
+  private heard = new WeakSet<object>();
   /** Jump to final approach after a homing, and land her (Assist/Arcade). */
   readonly docking = new DockingComputer();
   /** Shared map state as it was at the start, so a replay can begin from the same place. */
@@ -446,6 +452,8 @@ export class Sortie {
       // He calls tally-ho when he sees them.
       if (f2.contacts.ids().length && !this.engaged) this.autoTally(L);
     }
+    this.goInWhenObvious();
+    this.radio();
     if (this.world.tick % 25 === 0) this.controller.step(this.view());
     if (this.homingDue >= 0 && this.time >= this.homingDue) this.giveHoming();
     this.trackSightings();
@@ -527,6 +535,88 @@ export class Sortie {
     this.phase = 'combat';
     this.controller.say(this.time, `${this.names.get(L.id) ?? 'Leader'}: Tally-ho! Bandits ahead. Going in!`, 'squadron', true);
     this.giveAll('bombers');
+  }
+
+  /** Section callsign by place in the formation: Red 1 leads; Red, Yellow, Blue, Green sections. */
+  callOf(q: Plane): string {
+    const i = this.formation.indexOf(q);
+    if (i <= 0) return `${this.spec.squadron} Leader`;
+    const per = (this.spec.formation ?? 'vic') === 'pairs' ? 4 : 3;
+    const colour = ['Red', 'Yellow', 'Blue', 'Green'][Math.floor(i / per) % 4];
+    return `${colour} ${['One', 'Two', 'Three', 'Four'][i % per]}`;
+  }
+
+  /**
+   * The squadron goes in without waiting for the word when it's obvious:
+   * the player opens fire with the enemy about, an enemy comes close, or
+   * one of the formation is hit. Leading, it's the player's tally-ho; flying
+   * as a wingman, the leader's.
+   */
+  private goInWhenObvious(): void {
+    if (this.engaged || this.airborneAt < 0) return;
+    const w = this.world, me = this.player, S = TUNING.sortie;
+    let near = Infinity;
+    for (const q of w.planes) if (q.side !== me.side && q.alive) near = Math.min(near, q.pos.distTo(me.pos));
+    const shotAt = w.events.some((e) => e.t === w.time && (e.kind === 'hit' || e.kind === 'playerHit') && this.formation.some((q) => q.id === e.planeId) && w.planes.some((q) => q.id === e.otherId && q.side !== me.side));
+    const obvious = (me.firing && near < S.tallyRange) || near < S.autoTallyRange || shotAt;
+    if (!obvious) return;
+    const L = this.leader;
+    if (this.spec.leading || L === me || !L.alive) this.tallyHo();
+    else this.autoTally(L);
+  }
+
+  /** The squadron's R/T: sightings, break calls, kills and losses. */
+  private radio(): void {
+    const w = this.world, me = this.player, t = this.time, S = TUNING.sortie;
+    const mine = (id: number | undefined) => this.formation.find((q) => q.id === id && q !== me);
+    for (const e of w.events) {
+      if (this.heard.has(e)) continue;
+      this.heard.add(e);
+      if (e.kind === 'shotDown') {
+        const victim = w.planes.find((q) => q.id === e.planeId);
+        const killer = mine(e.otherId);
+        if (killer && victim && victim.side !== me.side) this.controller.say(t, RT.kill(this.callOf(killer), victim.type.short), 'squadron', false);
+        const lost = mine(e.planeId);
+        if (lost) this.controller.say(t, RT.hit(this.callOf(lost)), 'squadron', true);
+      }
+      if (e.kind === 'bail') {
+        const q = mine(e.planeId);
+        if (q) this.controller.say(t, RT.bailing(this.callOf(q)), 'squadron', true);
+      }
+    }
+    if (w.tick % 25 !== 0 || me.status !== 'flying') return;
+    const others = this.formation.filter((q) => q !== me && q.alive && q.status === 'flying');
+    const clockOn = (q: Plane) => {
+      const rel = q.pos.clone().sub(me.pos);
+      return { clock: clockOf(((Math.atan2(rel.x, rel.z) - me.fs.heading) * 180) / Math.PI), rel: rel.y > 300 ? 'above' : rel.y < -300 ? 'below' : 'level', local: me.fs.q.unrotate(rel) };
+    };
+    // Someone on the player's tail: the nearest wingman shouts.
+    if (t - this.lastBreakCall > S.breakCallEvery && others.length) {
+      for (const q of w.planes) {
+        if (q.side === me.side || !q.alive || q.type.role === 'bomber' || q.type.role === 'diveBomber') continue;
+        const g = threatGeometry(q, me);
+        if (g.range > S.breakCallRange || g.offTail > 0.7 || g.aimErr > 0.35) continue;
+        const caller = others.reduce((a, b) => (a.pos.distTo(me.pos) < b.pos.distTo(me.pos) ? a : b));
+        if (caller.pos.distTo(me.pos) > 4000) break;
+        this.lastBreakCall = t;
+        this.controller.say(t, `${this.callOf(caller)}: ${RT.breakCall(this.spec.leading ? `${this.spec.squadron} Leader` : this.callOf(me), clockOn(q).local.x >= 0 ? 'right' : 'left')}`, 'squadron', true);
+        break;
+      }
+    }
+    // Before the fight: a wingman sees them first.
+    if (!this.engaged && t - this.lastSightingCall > 60) {
+      for (const q of others) {
+        const b = q.brain;
+        if (!(b instanceof WingmanBrain)) continue;
+        const id = b.fighter.contacts.ids().find((id) => w.planes.some((p) => p.id === id && p.alive && p.pos.distTo(me.pos) < S.tallyRange));
+        if (id === undefined) continue;
+        const e = w.planes.find((p) => p.id === id)!;
+        const c = clockOn(e);
+        this.lastSightingCall = t;
+        this.controller.say(t, `${this.callOf(q)}: ${RT.hostileNear(c.clock, c.rel)}`, 'squadron', true);
+        break;
+      }
+    }
   }
 
   /** Remember the last thing the player saw of each enemy they hit. */

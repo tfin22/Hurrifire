@@ -3,8 +3,15 @@
 // straight and level for the bomb run. Damaged aircraft drop out, jettison
 // their bombs and turn for France: an easy kill, but a turned-back raid is
 // what actually matters.
+//
+// Crews also have nerve. Bursts of fire, fighters coming head-on through the
+// formation and the bomber alongside going down all wear it away; it comes
+// back slowly when they are left alone. When it runs out the crew jettison
+// and turn for home, sound aircraft or not. Green crews break first; crews
+// on the bomb run are committed and harder to shake.
 
 import { clamp, Vec3 } from '../../core/math';
+import { TUNING } from '../../tuning';
 import { controllable, damageFraction } from '../damage';
 import type { Plane } from '../plane';
 import { flyTo, headingAltitude, rollTo, stickForG } from './pilot';
@@ -24,6 +31,8 @@ export interface RaidLink {
   jettison(p: Plane): void;
   /** Time (s) a formation member was last attacked. */
   lastAttacked: number;
+  /** "Bombers under attack": tells the escort who is shooting. */
+  alarm?(attackerId: number, time: number): void;
   home: Vec3;
   phase: 'inbound' | 'bombRun' | 'outbound' | 'scattered';
   /** Dive bombers (Stukas) peel off and dive on the target. */
@@ -35,16 +44,53 @@ export type BomberState = 'formation' | 'lead' | 'bombRun' | 'dive' | 'outbound'
 export class BomberBrain implements Brain {
   state: BomberState = 'formation';
   leg = 1;
+  /** Crew's nerve (NaN until first update, then set from skill). */
+  nerve = NaN;
+  /** Lost its nerve: jettisoned and running for home, aircraft sound. */
+  broken = false;
   private divePhase = 0;
+  private lastShaken = -100;
+  private nextLook = 0;
+  private lastHeadOn = -100;
 
   constructor(readonly raid: RaidLink, public slot: Vec3) {}
 
   label(): string {
-    return this.state;
+    return this.broken ? 'broken' : this.state;
   }
 
-  onHit(_me: Plane, _by: number, ctx: AIContext): void {
+  onHit(me: Plane, by: number, ctx: AIContext): void {
     this.raid.lastAttacked = ctx.time;
+    this.raid.alarm?.(by, ctx.time);
+    if (ctx.time - this.lastShaken >= TUNING.ai.nerveHitGap) this.shake(me, TUNING.ai.nerveHit, ctx.time);
+  }
+
+  /** Wear the crew's nerve down. */
+  shake(me: Plane, amount: number, time: number): void {
+    if (Number.isNaN(this.nerve)) this.nerve = TUNING.ai.bomberNerve[me.skill.level] ?? 1;
+    this.nerve -= amount * (this.raid.phase === 'bombRun' ? TUNING.ai.bombRunNerve : 1);
+    this.lastShaken = time;
+  }
+
+  /** Fighters coming at us head-on, guns going or very close: the most unnerving attack there is. One pass shakes once, however many come through. */
+  private lookAhead(me: Plane, ctx: AIContext): void {
+    const A = TUNING.ai;
+    if (ctx.time - this.lastHeadOn < A.headOnGap) return;
+    const fwd = me.fs.forward();
+    const cosMax = Math.cos((A.headOnDeg * Math.PI) / 180);
+    for (const q of ctx.planes) {
+      if (q.side === me.side || !q.alive || q.type.role !== 'fighter') continue;
+      const rel = q.pos.clone().sub(me.pos);
+      const d = rel.len();
+      if (d > A.headOnRange || d < 1) continue;
+      if (rel.dot(fwd) / d < cosMax) continue;
+      // Coming towards us, nose on, and shooting (or about to hit us).
+      if (q.fs.forward().dot(fwd) > -0.7) continue;
+      if (!q.firing && d > A.headOnClose) continue;
+      this.lastHeadOn = ctx.time;
+      this.shake(me, A.nerveHeadOn, ctx.time);
+      return;
+    }
   }
 
   update(me: Plane, ctx: AIContext): void {
@@ -56,17 +102,28 @@ export class BomberBrain implements Brain {
       c.pitch = 0; c.roll = rollTo(me.fs, 0); c.throttle = 0;
       return;
     }
-    // Badly hurt or an engine out: drop out of formation and go home.
+    // Nerve: looked at twice a second, recovered when left alone.
+    const A = TUNING.ai;
+    if (Number.isNaN(this.nerve)) this.nerve = A.bomberNerve[me.skill.level] ?? 1;
+    if (ctx.time >= this.nextLook) {
+      this.nextLook = ctx.time + 0.5;
+      if (this.state !== 'straggler') this.lookAhead(me, ctx);
+    }
+    if (ctx.time - this.lastShaken > A.nerveCalm) this.nerve = Math.min(A.bomberNerve[me.skill.level] ?? 1, this.nerve + A.nerveRecovery * ctx.dt);
+    // Badly hurt, an engine out, or the crew have had enough: drop out of formation and go home.
     const engineOut = me.damage.engines.some((e) => e <= 0);
-    if (this.state !== 'straggler' && (engineOut || damageFraction(me.damage) > 0.32 || me.damage.pilot === 'wounded')) {
+    const hurt = engineOut || damageFraction(me.damage) > 0.32 || me.damage.pilot === 'wounded';
+    if (this.state !== 'straggler' && (hurt || this.nerve <= 0)) {
       this.state = 'straggler';
+      this.broken = !hurt;
       if (me.bombs > 0) this.raid.jettison(me);
     }
     const L = this.raid.leader();
     if (this.state === 'straggler' || this.raid.phase === 'scattered') {
       const d = this.raid.home.clone().sub(me.pos);
-      headingAltitude(me.fs, Math.atan2(d.x, d.z), Math.max(500, me.pos.y - 300), c, 4, 0.4);
-      c.throttle = engineOut ? 1 : 0.85;
+      // A shaken crew dive away for speed; a hurt one nurses it home.
+      headingAltitude(me.fs, Math.atan2(d.x, d.z), Math.max(500, me.pos.y - (this.broken ? 800 : 300)), c, this.broken ? 6 : 4, 0.4);
+      c.throttle = engineOut || this.broken ? 1 : 0.85;
       return;
     }
     if (L === me) this.lead(me, ctx);

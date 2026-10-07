@@ -81,7 +81,8 @@ export const TUNING = {
     coughFuelFrac: 0.012,
     tempRate: 0.05,
     seizeTemp: 140,
-    slideFriction: 0.55,
+    /** Sliding on the belly (or as a wreck): this much friction, plus the surface's rolling friction. */
+    slideFriction: 0.45,
     brakeFriction: 0.3,
     sideFriction: 0.8,
     groundRudder: 0.6,
@@ -170,6 +171,42 @@ export const TUNING = {
     vicSpotFactor: 0.45,
     /** Seconds after a fatal hit before crew start to jump. */
     bailDelay: [2, 6] as const,
+    /**
+     * Enemy difficulty (a setting): a grade shift, then multipliers on top.
+     * Flight school: a grade greener and sloppier with it. Veterans of the
+     * Spanish Civil War: a grade sharper, better eyes, aim and reactions.
+     * Arcade's own grade off still applies on top.
+     */
+    enemy: {
+      school: { shift: -1, aim: 0.7, spot: 0.8, think: 1.4, gLimit: -0.5, wander: 3.5 },
+      normal: { shift: 0, aim: 1, spot: 1, think: 1, gLimit: 0, wander: 1 },
+      veteran: { shift: 1, aim: 1.12, spot: 1.15, think: 0.8, gLimit: 0.3, wander: 0.6 },
+    },
+    /** Escorts hear "bombers under attack": they learn of the attacker this long after (s), if within range (m). */
+    escortReaction: { green: 6, average: 3.5, experte: 2 } as Record<string, number>,
+    escortAlarmRange: 5000,
+    /** How long an alarm stays fresh (s). */
+    escortAlarmMemory: 20,
+    /** Bomber crews' nerve: starting value by skill; at zero they jettison and turn for home. */
+    bomberNerve: { green: 0.75, average: 1.0, experte: 1.3 } as Record<string, number>,
+    /** Nerve lost to a burst of fire (at most once per `nerveHitGap` s). */
+    nerveHit: 0.1,
+    nerveHitGap: 2,
+    /** Nerve lost to a fighter coming head-on through the formation. */
+    nerveHeadOn: 0.3,
+    headOnRange: 700,
+    headOnDeg: 25,
+    /** A head-on pass counts if the fighter is firing, or passes this close (m); one per this many s. */
+    headOnClose: 200,
+    headOnGap: 4,
+    /** Nerve lost when a bomber close by goes down, within this range (m). */
+    nerveLoss: 0.25,
+    lossRange: 800,
+    /** Crews on the bomb run are committed: nerve losses scaled by this. */
+    bombRunNerve: 0.5,
+    /** Nerve regained per second, after this long unmolested (s). */
+    nerveRecovery: 0.015,
+    nerveCalm: 15,
   },
 
   campaign: {
@@ -249,6 +286,11 @@ export const TUNING = {
     homingDelay: 3,
     /** A forced landing in a sound aircraft is written up unless fuel is below this fraction. */
     writeUpFuel: 0.06,
+    /** Leading: the squadron goes in by itself once an enemy is this close (m), or you open fire, or one of you is hit. */
+    autoTallyRange: 2500,
+    /** Wingmen's "break!" calls: an enemy fighter on your tail inside this range (m), at most this often (s). */
+    breakCallRange: 800,
+    breakCallEvery: 12,
   },
 
   controller: {
