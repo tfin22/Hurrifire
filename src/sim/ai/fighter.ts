@@ -385,7 +385,7 @@ export class FighterBrain implements Brain {
     // Aim with a little skill-dependent wander.
     if (ctx.time >= this.jitterT) {
       this.jitterT = ctx.time + 0.8;
-      const e = (1 - sk.aim) * 7;
+      const e = (1 - sk.aim) * 7 * (sk.wander ?? 1);
       this.aimJitter.set(ctx.rng.gauss() * e, ctx.rng.gauss() * e, ctx.rng.gauss() * e);
     }
     const lead = range < 1200 ? leadPoint(fs.pos, fs.vel, t.pos, t.fs.vel, muzzle).add(this.aimJitter) : t.pos.clone();

@@ -14,6 +14,8 @@ export interface Skill {
   spot: number;
   /** Gunnery quality, 0..1. */
   aim: number;
+  /** Multiplier on how far the aim wanders (1 = as the grade has it; set by enemy difficulty). */
+  wander?: number;
   /** Range (m) at which they open fire. */
   fireRange: number;
   /** Energy discipline: lowest IAS (m/s) they'll let a fight drag them to (0 = none). */
@@ -28,6 +30,28 @@ export interface Skill {
 
 export function skillFor(level: SkillLevel): Skill {
   return { level, ...TUNING.ai.skills[level] };
+}
+
+/** Enemy difficulty setting. */
+export type EnemyLevel = 'school' | 'normal' | 'veteran';
+export const ENEMY_LEVELS: readonly EnemyLevel[] = ['school', 'normal', 'veteran'];
+
+const GRADES: readonly SkillLevel[] = ['green', 'average', 'experte'];
+
+/** An enemy pilot's skill at a difficulty: shifted a grade, then scaled. */
+export function enemySkill(s: Skill, level: EnemyLevel): Skill {
+  const d = TUNING.ai.enemy[level];
+  if (level === 'normal') return s;
+  const g = GRADES[Math.max(0, Math.min(GRADES.length - 1, GRADES.indexOf(s.level) + d.shift))];
+  const b = skillFor(g);
+  return {
+    ...b,
+    aim: Math.min(0.95, b.aim * d.aim),
+    spot: b.spot * d.spot,
+    think: b.think * d.think,
+    gLimit: b.gLimit + d.gLimit,
+    wander: d.wander,
+  };
 }
 
 export interface AIContext {

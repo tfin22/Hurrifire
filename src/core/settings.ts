@@ -1,5 +1,7 @@
 // Player settings, persisted separately from the campaign save.
 
+import type { EnemyLevel } from '../sim/ai/types';
+
 export interface Settings {
   /**
    * Arcade (implies assist): quicker, tougher aircraft that never blacks out,
@@ -33,6 +35,8 @@ export interface Settings {
   bigTargets: boolean;
   /** Heading strip across the top of the view (not period, but easy to steer by). */
   compass: boolean;
+  /** Enemy difficulty: flight school, normal (as history had it), or Spanish Civil War veterans. */
+  enemy: EnemyLevel;
 }
 
 const KEY = 'scramble.settings.v1';
@@ -56,6 +60,7 @@ export const defaultSettings = (): Settings => ({
   stallGuard: true,
   bigTargets: true,
   compass: true,
+  enemy: 'normal',
 });
 
 export function loadSettings(): Settings {

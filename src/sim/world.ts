@@ -8,7 +8,7 @@ import { AIRCRAFT, AircraftId, Side, ZoneId } from '../content/aircraft';
 import { ControlFrame } from '../input/input';
 import { PART } from '../render/model';
 import { TUNING } from '../tuning';
-import { AIContext } from './ai/types';
+import { AIContext, EnemyLevel, enemySkill } from './ai/types';
 import { Bullet, hitZone, stepBullet, targetScale } from './ballistics';
 import { applyHit, controllable, DamageEvent, flightMods, tickDamage } from './damage';
 import { FlightEnv, GroundResponse, stepFlight, TouchdownInfo } from './flight';
@@ -91,6 +91,8 @@ export class World {
   /** Player assists (from settings; kept with the world so a replay matches). */
   stallGuard = false;
   bigTargets = false;
+  /** Enemy difficulty, applied to each enemy pilot on their first step (kept with the world so a replay matches). */
+  enemyLevel: EnemyLevel = 'normal';
   /** Arcade mode: the player's aircraft is quicker and tougher, and never blacks out. */
   arcade = false;
   readonly bullets: Bullet[] = [];
@@ -389,6 +391,10 @@ export class World {
         // Switched off after landing: on the brakes until she stops.
         if (p.fs.onGround && p.landing.result && p.fs.engine === 'off') { c.brake = true; c.throttle = 0; }
       } else if (p.brain && p.status === 'flying') {
+        if (!p.rated) {
+          p.rated = true;
+          if (this.player && p.side !== this.player.side) p.skill = enemySkill(p.skill, this.enemyLevel);
+        }
         p.brain.update(p, this.ctx);
       }
       if (p.status === 'wreck') {

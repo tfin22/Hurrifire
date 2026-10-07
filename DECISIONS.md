@@ -660,3 +660,39 @@ Two older bugs turned up while testing this:
   engine that isn't running now counts. Also, on the 109 side, being back
   over France only ended the sortie safely if you had crossed the English
   coast. A raid broken up over the Channel now counts too.
+
+## Enemy difficulty
+
+Playtest: "an option to set enemy difficulty? From flight school level to
+normal to Spanish Civil War vet."
+
+A setting, **ENEMY**, with three levels. Every enemy pilot already has a
+grade (green, average, experte), and everything they do comes from it:
+spotting, aim, fire range, energy discipline, G, reaction time, an escort's
+response to the bombers' call, a bomber crew's nerve and its gunners' aim.
+So the setting moves the grade and scales on top:
+
+| Level | Grade | Aim | Aim wander | Eyes | Thinking | G |
+|---|---|---|---|---|---|---|
+| Flight school | one greener | ×0.7 | ×3.5 | ×0.8 | ×1.4 slower | −0.5 |
+| Normal | as in 1940 | — | — | — | — | — |
+| Spain veterans | one sharper | ×1.12 (max 0.95) | ×0.6 | ×1.15 | ×0.8 | +0.3 |
+
+- It applies to whoever is the player's enemy: the Luftwaffe normally, the
+  RAF when you fly the 109.
+- It's applied to each enemy pilot once, on their first step. Raids spawn
+  mid-sortie, so this catches everyone, however they were made.
+- It's kept with the world, so a replay matches.
+- Arcade's own grade softer still applies on top. Arcade on Normal plays as
+  before; Arcade on Flight School is all greens, sloppier still.
+- **Aim wander is a new knob**, used only by this setting. A grade's aim
+  alone barely mattered: a few metres of wander against a 10 m wingspan.
+  In a probe, a green 109 hosing from 520 m killed a Spitfire flying
+  straight as fast as an average one did. With ×3.5 wander, Flight School
+  leaves a Spitfire flying straight alive in 5 of 12 runs (Normal: 0), and
+  fires 3.5 times the ammunition doing it.
+- Veterans hold fire until 240 m. Against a target flying straight they
+  are a few seconds slower to make the kill than Normal. Against a pilot
+  who manoeuvres, they spot sooner, don't overshoot, and bunt away.
+- Settings only, not the pause menu. Changing it mid-sortie would leave
+  pilots already rated at the old level.

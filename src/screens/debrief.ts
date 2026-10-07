@@ -10,6 +10,7 @@ import { FrameBuffer, W } from '../render/framebuffer';
 import { C } from '../render/palette';
 import { fillCircle, fillRect, hline, rectOutline, vline } from '../render/raster';
 import { Menu, panel } from './ui';
+import { ENEMY_LEVELS, EnemyLevel } from '../sim/ai/types';
 
 export class DebriefScreen implements Screen {
   touchMode = 'menu' as const;
@@ -152,6 +153,13 @@ export class LogbookScreen implements Screen {
   }
 }
 
+const ENEMY_NAMES: Record<EnemyLevel, string> = { school: 'FLIGHT SCHOOL', normal: 'NORMAL', veteran: 'SPAIN VETERANS' };
+const ENEMY_HELP: Record<EnemyLevel, string> = {
+  school: 'FRESH FROM TRAINING: POOR SHOTS, SLOW TO SEE YOU, EASY TO RATTLE',
+  normal: 'AS IN 1940: MOSTLY AVERAGE, A FEW GREEN, THE ODD EXPERTE',
+  veteran: 'BLOODED IN SPAIN: SHARP EYES, GOOD SHOTS, STEADY BOMBER CREWS',
+};
+
 export class SettingsScreen implements Screen {
   touchMode = 'menu' as const;
   music = 'title' as const;
@@ -168,6 +176,8 @@ export class SettingsScreen implements Screen {
         else { st.arcade = true; st.arcadeTakeoff = true; st.assist = true; }
         this.refresh();
       } },
+      { label: `ENEMY: ${ENEMY_NAMES[st.enemy]}`, act: () => { st.enemy = ENEMY_LEVELS[(ENEMY_LEVELS.indexOf(st.enemy) + 1) % ENEMY_LEVELS.length]; this.refresh(); },
+        adjust: (d: -1 | 1) => { st.enemy = ENEMY_LEVELS[Math.max(0, Math.min(ENEMY_LEVELS.length - 1, ENEMY_LEVELS.indexOf(st.enemy) + d))]; this.refresh(); } },
       { label: `ENEMY MARKERS: ${on(st.markers)}`, act: () => { st.markers = !st.markers; this.refresh(); } },
       { label: `BIG SPEED/HEIGHT: ${on(st.bigReadouts)}`, act: () => { st.bigReadouts = !st.bigReadouts; this.refresh(); } },
       { label: `AMMO BAR: ${on(st.ammoBar)}`, act: () => { st.ammoBar = !st.ammoBar; this.refresh(); } },
@@ -183,7 +193,7 @@ export class SettingsScreen implements Screen {
       { label: `PANEL: ${st.slimPanel ? 'SLIM' : 'FULL'}`, act: () => { st.slimPanel = !st.slimPanel; this.refresh(); } },
       { label: 'DONE', act: () => this.next() },
     ];
-    this.menu = new Menu(items(), 70, 32, 180, 12);
+    this.menu = new Menu(items(), 70, 32, 180, 11);
     this.refresh = () => { app.saveSettings(); const sel = this.menu.sel; this.menu.items = items(); this.menu.sel = sel; };
   }
   private refresh: () => void;
@@ -203,7 +213,8 @@ export class SettingsScreen implements Screen {
     panel(fb, 50, 24, 220, 200);
     this.menu.draw(fb, 'SETTINGS');
     const st = this.app.settings;
-    drawTextCentered(fb, st.arcade ? (st.arcadeTakeoff ? 'ARCADE: TAKE OFF, JUMP TO THE RAID, QUICK AND TOUGH' : 'ARCADE: START NEAR THE RAID, QUICK AND TOUGH, NO BLACKOUT') : st.assist ? 'ASSIST: LEAD MARKER, LANDING AIDS, ONE START BUTTON' : 'AUTHENTIC: AS IT WAS', 160, 229, C.CHALK, 'tiny');
+    if (this.menu.sel === 1) drawTextCentered(fb, ENEMY_HELP[st.enemy], 160, 229, C.CHALK, 'tiny');
+    else drawTextCentered(fb, st.arcade ? (st.arcadeTakeoff ? 'ARCADE: TAKE OFF, JUMP TO THE RAID, QUICK AND TOUGH' : 'ARCADE: START NEAR THE RAID, QUICK AND TOUGH, NO BLACKOUT') : st.assist ? 'ASSIST: LEAD MARKER, LANDING AIDS, ONE START BUTTON' : 'AUTHENTIC: AS IT WAS', 160, 229, C.CHALK, 'tiny');
     drawTextCentered(fb, 'KEYS: ARROWS/WASD STICK, SPACE FIRE, +/- THROTTLE, G GEAR, F FLAPS,', 160, 238, C.GREY_L, 'tiny');
     drawTextCentered(fb, 'P PADLOCK, B LOOK BACK, T TALLY-HO, 1-4 ORDERS, M MAP, V HOMING,', 160, 245, C.GREY_L, 'tiny');
     drawTextCentered(fb, 'I START, R JUMP TO RAID, N JUMP HOME, X ENGINE OFF, J BAIL OUT, [ ] TIME', 160, 252, C.GREY_L, 'tiny');

@@ -171,6 +171,17 @@ export const TUNING = {
     vicSpotFactor: 0.45,
     /** Seconds after a fatal hit before crew start to jump. */
     bailDelay: [2, 6] as const,
+    /**
+     * Enemy difficulty (a setting): a grade shift, then multipliers on top.
+     * Flight school: a grade greener and sloppier with it. Veterans of the
+     * Spanish Civil War: a grade sharper, better eyes, aim and reactions.
+     * Arcade's own grade off still applies on top.
+     */
+    enemy: {
+      school: { shift: -1, aim: 0.7, spot: 0.8, think: 1.4, gLimit: -0.5, wander: 3.5 },
+      normal: { shift: 0, aim: 1, spot: 1, think: 1, gLimit: 0, wander: 1 },
+      veteran: { shift: 1, aim: 1.12, spot: 1.15, think: 0.8, gLimit: 0.3, wander: 0.6 },
+    },
     /** Escorts hear "bombers under attack": they learn of the attacker this long after (s), if within range (m). */
     escortReaction: { green: 6, average: 3.5, experte: 2 } as Record<string, number>,
     escortAlarmRange: 5000,
