@@ -556,7 +556,7 @@ function groundStep(s: FlightState, c: FlightControls, env: FlightEnv, mods: Fli
   const sliding = s.sliding || s.gear < 0.98 || s.gearLegsDown < 2;
   // Forward forces: thrust and drag along the ground (from acc), friction.
   const fwdAcc = acc.x * hx + acc.z * hz;
-  const mu = sliding ? T.slideFriction * gnd.friction : (gnd.friction + (c.brake ? T.brakeFriction : 0));
+  const mu = sliding ? T.slideFriction + gnd.friction : (gnd.friction + (c.brake ? T.brakeFriction : 0));
   const fric = (mu * N) / m;
   vAlong += fwdAcc * dt;
   if (Math.abs(vAlong) <= fric * dt) vAlong = 0;

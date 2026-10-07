@@ -63,6 +63,16 @@ describe('landing, flown', () => {
     }
   });
 
+  it('out of fuel with the throttle left open, she still comes to rest and the landing ends', () => {
+    const { w, p } = approachWorld(ground('pasture'), false, 'dead', 2);
+    for (let i = 0; i < 150 * 50 && p.status === 'flying'; i++) {
+      flyApproach(p.fs, { x: 0, z: 0, h: 20, dir: 0 }, p.ctl, { glide: true });
+      p.ctl.throttle = 1;
+      w.step(null);
+    }
+    expect(p.status).toBe('landed');
+  });
+
   it('a wheels-up landing on ploughland is a belly landing, and rewarded as one', () => {
     const { w, p } = approachWorld(ground('ploughed'), false, 'dead', 2);
     flyIn(w, p, true);

@@ -321,7 +321,7 @@ export class World {
       }
     }
     const speed = Math.hypot(fs.vel.x, fs.vel.z);
-    if (!fs.onGround || fs.stopped || (speed < 0.6 && (fs.throttle < 0.15 || fs.engine === 'off') && p.landing.result)) {
+    if (!fs.onGround || fs.stopped || (speed < 0.6 && (fs.throttle < 0.15 || fs.engine !== 'running') && p.landing.result)) {
       if ((fs.stopped || speed < 0.6) && p.status === 'flying' && fs.onGround) this.stopOnGround(p);
       return;
     }

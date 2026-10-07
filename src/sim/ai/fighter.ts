@@ -32,6 +32,8 @@ export interface FighterOpts {
   slot?: Vec3;
   /** Escort: only engage fighters that come near these planes. */
   escortOf?: () => Plane[];
+  /** Escort: the bombers' calls of who is attacking them (attacker id → first and latest report). */
+  alarm?: ReadonlyMap<number, { first: number; last: number }>;
   /** Hold fire / don't engage until released (wingmen before tally-ho). */
   holdFire?: boolean;
   /** Fuel fraction at which to go home. */
@@ -178,6 +180,7 @@ export class FighterBrain implements Brain {
     }
     if (this.state === 'rtb' || this.state === 'glide') return;
     if (this.opts.holdFire) return;
+    this.hearAlarm(me, ctx);
     // Targets.
     const tgt = this.find(ctx, this.targetId);
     if (!tgt || !this.contacts.knows(tgt.id)) this.targetId = this.pickTarget(me, ctx);
@@ -215,6 +218,25 @@ export class FighterBrain implements Brain {
     this.set('evade');
   }
 
+  /** Escort: "bombers under attack!" puts the attacker in our picture, after a moment to react. */
+  private hearAlarm(me: Plane, ctx: AIContext): void {
+    const al = this.opts.alarm;
+    if (!al) return;
+    const A = TUNING.ai;
+    const delay = A.escortReaction[me.skill.level] ?? 3.5;
+    for (const [id, a] of al) {
+      if (ctx.time - a.last > A.escortAlarmMemory || ctx.time - a.first < delay) continue;
+      if (this.contacts.knows(id)) continue;
+      const t = this.find(ctx, id);
+      if (t && t.pos.distTo(me.pos) < A.escortAlarmRange) this.contacts.tell(id, ctx.time);
+    }
+  }
+
+  private isAlarm(id: number, ctx: AIContext): boolean {
+    const a = this.opts.alarm?.get(id);
+    return !!a && ctx.time - a.last < TUNING.ai.escortAlarmMemory;
+  }
+
   private pickTarget(me: Plane, ctx: AIContext): number {
     let best = -1, bestScore = Infinity;
     const escort = this.opts.escortOf?.() ?? null;
@@ -229,6 +251,8 @@ export class FighterBrain implements Brain {
         if (!near && d > 2500) continue;
       }
       if (this.opts.preferBombers && (t.type.role === 'bomber' || t.type.role === 'diveBomber')) d *= 0.5;
+      // Escorts go first for whoever is shooting at the bombers.
+      if (escort && this.isAlarm(id, ctx)) d *= 0.4;
       // Easier targets: those not looking at us.
       const g = threatGeometry(me, t);
       d *= 0.7 + 0.3 * (g.offTail / Math.PI);

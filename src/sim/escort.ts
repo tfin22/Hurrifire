@@ -326,7 +326,8 @@ export class EscortSortie {
     const p = this.player;
     const chute = this.world.parachutes.find((c) => c.fromPlane === p.id && c.name === 'pilot');
     if (chute && this.phase !== 'over') this.phase = 'parachute';
-    if (!isFrance(p.pos.x, p.pos.z) && this.map.surfaceAt(p.pos.x, p.pos.z) !== 'sea') this.crossed = true;
+    // Out over the Channel counts: a raid broken up before the English coast still means a trip home.
+    if (!isFrance(p.pos.x, p.pos.z)) this.crossed = true;
     if (this.endT < 0) {
       // Back over France with nobody about: home.
       if (this.crossed && p.status === 'flying' && !p.fs.onGround && isFrance(p.pos.x, p.pos.z) && !chute) {
