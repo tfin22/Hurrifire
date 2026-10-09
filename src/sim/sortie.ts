@@ -70,6 +70,14 @@ export interface SortieSpec {
   otherSquadrons?: boolean;
 }
 
+/** Why you broke off, as you reported it. */
+export type ReportKind = 'ammo' | 'damaged' | 'wounded' | 'fuel';
+
+const REPORT_WORDS: Record<ReportKind, string> = { ammo: 'out of ammunition', damaged: 'damaged', wounded: 'wounded', fuel: 'short of fuel' };
+
+/** One call on the R/T menu: the command it sends and its button label. */
+export interface RTOption { cmd: SimCmd; label: string }
+
 export type SortiePhase = 'startup' | 'takeoff' | 'climb' | 'combat' | 'rtb' | 'down' | 'parachute' | 'over';
 
 export interface PilotOutcome {
@@ -94,6 +102,8 @@ export interface SortieResult {
   damageNotes: string[];
   outcome: PilotOutcome;
   raidNotes: string[];
+  /** Your R/T reports that bear on the sortie (breaking off, Mayday). */
+  rtNotes?: string[];
   raidsTurned: number;
   raidsBombed: number;
   bombsOnTargetKg: number;
@@ -193,6 +203,17 @@ export class Sortie {
   /** Squadron R/T: when the last "break!" and "bandits!" calls went out (s). */
   private lastBreakCall = -100;
   private lastSightingCall = -100;
+  /** What you reported on the R/T: breaking off, and why (for the debrief). */
+  reported: { kind: ReportKind; t: number } | null = null;
+  /** A Mayday you sent: when, and whether over the sea. */
+  mayday: { t: number; sea: boolean } | null = null;
+  /** Aircraft (ids) whose ditching or bale-out over the sea was called in to air-sea rescue. */
+  private asrAlerted = new Set<number>();
+  /** Raids we asked for help against, and free hunts the controller warned us of. */
+  private helpAsked = new Set<number>();
+  private huntWarned = new Set<number>();
+  /** Answers on their way: the controller takes a few seconds to come back. */
+  private replies: { t: number; say: () => void }[] = [];
   /** Events the squadron R/T has already answered. */
   private heard = new WeakSet<object>();
   /** Jump to final approach after a homing, and land her (Assist/Arcade). */
@@ -384,7 +405,7 @@ export class Sortie {
       speed: Math.max(90, fs.tas),
       raids: this.world.raids,
       engaged: this.engaged,
-      wantsHome: p.fs.fuel < p.type.fuelCapacity * 0.2 || p.armament.frac < 0.05 || damageFraction(p.damage) > 0.3,
+      wantsHome: !!this.reported || p.fs.fuel < p.type.fuelCapacity * 0.2 || p.armament.frac < 0.05 || damageFraction(p.damage) > 0.3,
       fromSector: Math.hypot(fs.pos.x - this.base.pos.x, fs.pos.z - this.base.pos.z),
       overFrance: isFrance(fs.pos.x, fs.pos.z),
       offMap: !this.map.inBounds(fs.pos.x, fs.pos.z),
@@ -419,6 +440,9 @@ export class Sortie {
         break;
       case 'order1': case 'order2': case 'order3': case 'order4':
         this.order(c);
+        break;
+      case 'rtVector': case 'rtNewRaid': case 'rtFix': case 'rtHelp': case 'rtReport': case 'rtMayday':
+        if (this.rtOptions().some((o) => o.cmd === c)) this.radioCall(c);
         break;
     }
   }
@@ -515,6 +539,7 @@ export class Sortie {
     }
     this.goInWhenObvious();
     this.radio();
+    for (let i = 0; i < this.replies.length; i++) if (this.replies[i].t <= this.time) { this.replies[i].say(); this.replies.splice(i--, 1); }
     if (this.world.tick % 25 === 0) this.controller.step(this.view());
     if (this.homingDue >= 0 && this.time >= this.homingDue) this.giveHoming();
     this.trackSightings();
@@ -598,6 +623,140 @@ export class Sortie {
     this.giveAll('bombers');
   }
 
+  // ------------------------------------------------------------ the R/T menu
+
+  /** Why we'd break off now, if there's a reason. */
+  reportKind(): ReportKind | null {
+    const p = this.player, d = p.damage;
+    if (d.pilot === 'wounded') return 'wounded';
+    if (damageFraction(d) > 0.15 || d.fire > 0 || d.glycol > 0.2 || d.oil > 0.3 || p.fs.engine !== 'running') return 'damaged';
+    if (p.armament.frac < 0.05) return 'ammo';
+    if (p.fs.fuel < p.type.fuelCapacity * 0.25) return 'fuel';
+    return null;
+  }
+
+  /** In real trouble: worth a Mayday. */
+  private trouble(): string | null {
+    const p = this.player, d = p.damage;
+    if (p.status === 'wreck') return 'Going down';
+    if (d.fire > 0) return 'On fire';
+    if (p.fs.engine === 'dead' || p.fs.engine === 'seized') return 'Engine gone';
+    if (d.glycol > 0.3) return 'Glycol leak, engine overheating';
+    if (d.pilot === 'wounded') return 'Wounded';
+    if (damageFraction(d) > 0.35) return 'Badly hit';
+    return null;
+  }
+
+  /** Live raids the controller could put us on. */
+  private liveRaids(): Raid[] {
+    return this.world.raids.filter((r) => r.started && !r.turnedBack && r.phase !== 'outbound' && r.phase !== 'scattered' && r.estimatedStrength > 0);
+  }
+
+  /** What makes sense to say right now, most pressing first (at most six). */
+  rtOptions(): RTOption[] {
+    const p = this.player, fs = p.fs, out: RTOption[] = [];
+    if ((p.status !== 'flying' && p.status !== 'wreck') || fs.onGround) return out;
+    const C = this.controller, target = C.targetRaid;
+    if (this.trouble() && !this.mayday) out.push({ cmd: 'rtMayday', label: 'MAYDAY' });
+    const rk = this.reportKind();
+    if (rk && !this.reported) out.push({ cmd: 'rtReport', label: { ammo: 'RTB: NO AMMO', damaged: 'RTB: DAMAGED', wounded: 'RTB: WOUNDED', fuel: 'RTB: FUEL' }[rk] });
+    if (p.status === 'wreck') return out;
+    const near = this.world.planes.some((q) => q.side !== p.side && q.alive && q.pos.distTo(p.pos) < TUNING.sortie.tallyRange);
+    if (!this.engaged && near) out.push({ cmd: 'tallyHo', label: 'TALLY-HO' });
+    if (!this.reported) {
+      out.push({ cmd: 'rtVector', label: 'VECTOR' });
+      if (this.liveRaids().some((r) => r !== target)) out.push({ cmd: 'rtNewRaid', label: 'NEW RAID' });
+      if (target && !this.helpAsked.has(target.id) && target.estimatedStrength >= TUNING.sortie.helpMinStrength && (this.engaged || target.plot.distTo(p.pos) < 15000)) out.push({ cmd: 'rtHelp', label: 'SEND HELP' });
+    }
+    out.push({ cmd: 'rtFix', label: 'FIX' });
+    if (this.homingDue < 0) out.push({ cmd: 'homing', label: 'HOMING' });
+    return out.slice(0, 6);
+  }
+
+  /** Make a call on the R/T; the controller answers a few seconds later. */
+  private radioCall(c: SimCmd): void {
+    const p = this.player, C = this.controller, sq = this.spec.squadron, t = this.time;
+    const later = (secs: number, say: () => void) => this.replies.push({ t: t + secs, say });
+    const angels = sayAngels(p.pos.y * M_TO_FT);
+    switch (c) {
+      case 'rtVector':
+        C.say(t, RT.askVector(sq, C.callsign), 'player', false);
+        C.askVector(t);
+        break;
+      case 'rtNewRaid': {
+        C.say(t, RT.askNewRaid(sq, C.callsign, angels, describePlace(this.map, p.pos.x, p.pos.z)), 'player', false);
+        later(4, () => {
+          const others = this.liveRaids().filter((r) => r !== C.targetRaid);
+          const pool = others.some((r) => r.bombing) ? others.filter((r) => r.bombing) : others;
+          const next = pool.sort((a, b) => a.plot.distTo(p.pos) - b.plot.distTo(p.pos))[0];
+          if (!next) { C.say(this.time, RT.noNewRaid(sq, C.callsign), 'controller', true); return; }
+          C.say(this.time, RT.newRaid(sq, C.callsign), 'controller', true);
+          C.assign(next, this.time);
+          // Off the old raid: re-form and follow the new vector.
+          if (this.engaged) { this.engaged = false; this.giveAll('reform'); }
+        });
+        break;
+      }
+      case 'rtFix': {
+        C.say(t, RT.askFix(sq, C.callsign), 'player', false);
+        later(3, () => {
+          const h = homingTo(this.map, p.pos, true, this.world.weather.wind);
+          const f = h.field.pos, brg = (Math.atan2(f.x - p.pos.x, f.z - p.pos.z) * 180) / Math.PI;
+          C.say(this.time, RT.fix(sq, C.callsign, describePlace(this.map, p.pos.x, p.pos.z), sayAngels(p.pos.y * M_TO_FT), sayHeading(brg), h.field.name, sayMiles(Math.hypot(f.x - p.pos.x, f.z - p.pos.z))), 'controller', true);
+        });
+        break;
+      }
+      case 'rtHelp': {
+        const raid = C.targetRaid;
+        if (!raid) break;
+        this.helpAsked.add(raid.id);
+        C.say(t, RT.askHelp(sq, C.callsign, sayStrength(raid.estimatedStrength)), 'player', false);
+        later(5, () => this.sendHelp(raid));
+        break;
+      }
+      case 'rtReport': {
+        const kind = this.reportKind();
+        if (!kind) break;
+        this.reported = { kind, t };
+        C.say(t, RT.report[kind](sq, C.callsign), 'player', false);
+        later(3, () => { C.say(this.time, RT.reportAck(sq, C.callsign), 'controller', true); this.giveHoming(); });
+        break;
+      }
+      case 'rtMayday': {
+        const why = this.trouble();
+        if (!why) break;
+        const sea = this.map.surfaceAt(p.pos.x, p.pos.z) === 'sea';
+        this.mayday = { t, sea };
+        C.say(t, RT.mayday(sq, why, describePlace(this.map, p.pos.x, p.pos.z)), 'player', true);
+        later(3, () => C.say(this.time, RT.maydayAck(sq, C.callsign, sea), 'controller', true));
+        break;
+      }
+    }
+  }
+
+  /** Help asked for: the nearest squadron not yet in a fight is sent to our raid, or a fresh one scrambled. */
+  private sendHelp(raid: Raid): void {
+    const C = this.controller, sq = this.spec.squadron, S = TUNING.sky;
+    const free = this.others.filter((o) => !o.real && (o.state === 'waiting' || o.state === 'forming' || o.state === 'intercept') && o.raidId !== raid.id);
+    let o = free.sort((a, b) => a.plot.distTo(raid.plot) - b.plot.distTo(raid.plot))[0];
+    if (o) {
+      o.raidId = raid.id;
+      o.spec.scrambleAt = Math.min(o.spec.scrambleAt, this.time);
+    } else {
+      const used = new Set(this.others.map((x) => x.spec.callsign));
+      const callsign = CALLSIGNS.others.find((c) => !used.has(c) && c !== sq);
+      const base = TARGETS.airfield.filter((n) => n !== this.spec.home).map((n) => this.map.airfieldByName(n)).filter((a): a is Airfield => !!a)
+        .sort((a, b) => a.pos.distTo(raid.plot) - b.pos.distTo(raid.plot))[0];
+      if (!callsign || !base) { C.say(this.time, RT.noHelp(sq, C.callsign), 'controller', true); return; }
+      o = new OtherSquadron({ callsign, type: 'hurricane', count: 10, base: base.pos.clone(), baseName: base.name, raidId: raid.id, scrambleAt: this.time + 20, formation: this.spec.formation ?? 'vic' }, this.rng.fork(`help${callsign}`));
+      o.onEvent = (e, s, r) => this.otherEvent(e, s, r);
+      this.others.push(o);
+    }
+    const climb = Math.max(0, raid.alt - o.plot.y) / S.climbRate;
+    const mins = Math.max(2, Math.round((Math.max(climb, o.plot.distTo(raid.plot) / S.cruise) + 30) / 60));
+    C.say(this.time, RT.help(sq, C.callsign, o.spec.callsign, mins > 12 ? 'Bear up, it will be a while' : `About ${sayMinutes(mins)}`), 'controller', true);
+  }
+
   /** Section callsign by place in the formation: Red 1 leads; Red, Yellow, Blue, Green sections. */
   callOf(q: Plane): string {
     const i = this.formation.indexOf(q);
@@ -644,8 +803,27 @@ export class Sortie {
         const q = mine(e.planeId);
         if (q) this.controller.say(t, RT.bailing(this.callOf(q)), 'squadron', true);
       }
+      // One of us in the sea: whoever is nearest calls air-sea rescue.
+      const inSea = e.kind === 'ditched' || (e.kind === 'chuteLanded' && w.parachutes.some((c) => c.fromPlane === e.planeId && c.landed && c.overSea));
+      const victim = this.formation.find((q) => q.id === e.planeId);
+      if (inSea && victim && e.pos && !this.asrAlerted.has(victim.id) && !(victim === me && this.mayday)) {
+        const caller = this.formation.filter((q) => q !== victim && q.alive && !q.fs.onGround && q.pos.distTo(e.pos!) < 15000)
+          .sort((a, b) => a.pos.distTo(e.pos!) - b.pos.distTo(e.pos!))[0];
+        if (caller) {
+          this.asrAlerted.add(victim.id);
+          this.controller.say(t, RT.asr(this.callOf(caller), this.callOf(victim), describePlace(this.map, e.pos.x, e.pos.z)), 'squadron', true);
+          this.replies.push({ t: t + 3, say: () => this.controller.say(this.time, RT.asrAck(this.controller.callsign), 'controller', false) });
+        }
+      }
     }
     if (w.tick % 25 !== 0 || me.status !== 'flying') return;
+    // A free hunt near us that nobody has seen: the controller has it on the plot.
+    for (const r of w.raids) {
+      if (r.bombing || !r.started || this.huntWarned.has(r.id) || r === this.controller.targetRaid) continue;
+      if (r.plot.distTo(me.pos) > S.huntWarnRange) continue;
+      this.huntWarned.add(r.id);
+      this.controller.say(t, RT.huntWarning(this.spec.squadron, this.controller.callsign, describePlace(this.map, r.plot.x, r.plot.z), sayAngels((r.alt + r.heightError) * M_TO_FT)), 'controller', true);
+    }
     const others = this.formation.filter((q) => q !== me && q.alive && q.status === 'flying');
     const clockOn = (q: Plane) => {
       const rel = q.pos.clone().sub(me.pos);
@@ -783,10 +961,20 @@ export class Sortie {
       const helped = this.others.filter((o) => o.fought.has(r.id)).map((o) => o.spec.callsign);
       const lost = r.lostUnseen + r.bombers.filter((b) => b.status !== 'flying' && b.status !== 'landed').length;
       if (helped.length) raidNotes.push(`${helped.join(' and ')} squadron${helped.length > 1 ? 's' : ''} also engaged the raid on ${r.spec.targetName}${lost ? `; ${lost} of its bombers were lost` : ''}.`);
-      if (r.turnedBack || (r.bombsDropped === 0 && r.phase !== 'bombRun' && r.phase !== 'inbound')) { turned++; raidNotes.push(`The raid on ${r.spec.targetName} was turned back before it bombed.`); }
-      else if (r.bombsDropped > 0) { bombed++; raidNotes.push(`The raid reached ${r.spec.targetName}. ${r.bombsOnTarget > 0 ? 'Bombs fell on the target.' : 'The bombing was scattered.'}`); }
-      else raidNotes.push(`The raid on ${r.spec.targetName} was still on its way when you left it.`);
+      // Your part in it: what you shot down, and why you broke off if you said.
+      const mineDown = r.planes.filter((q) => q.killedBy === p.id && q.status !== 'flying').length;
+      const yours = r.planes.some((q) => q.damage.by[p.id]) || (!w.raids.some((x) => x.planes.some((q) => q.damage.by[p.id])) && r === this.controller.targetRaid);
+      const tally = mineDown ? `having shot down ${mineDown} of it` : '';
+      const why = this.reported && yours ? `You broke off ${REPORT_WORDS[this.reported.kind]}${tally ? `, ${tally}` : ''}` : tally ? `You were in at it, ${tally}` : '';
+      if (r.turnedBack || (r.bombsDropped === 0 && r.phase !== 'bombRun' && r.phase !== 'inbound')) { turned++; raidNotes.push(`The raid on ${r.spec.targetName} was turned back before it bombed.${tally ? ` You accounted for ${mineDown} of it.` : ''}`); }
+      else if (r.bombsDropped > 0) { bombed++; raidNotes.push(`${why ? `${why}; the raid went on to ${r.spec.targetName}. ` : `The raid reached ${r.spec.targetName}. `}${r.bombsOnTarget > 0 ? 'Bombs fell on the target.' : 'The bombing was scattered.'}`); }
+      else raidNotes.push(why ? `${why}; the raid was still heading for ${r.spec.targetName}.` : `The raid on ${r.spec.targetName} was still on its way when you left it.`);
     }
+    // What you said on the R/T that mattered.
+    const rtNotes: string[] = [];
+    const at = (t: number) => `${Math.max(1, Math.round((t - Math.max(0, this.airborneAt)) / 60))} minutes up`;
+    if (this.reported) rtNotes.push(`Reported ${REPORT_WORDS[this.reported.kind]} at ${at(this.reported.t)} and came home.`);
+    if (this.mayday) rtNotes.push(`Sent a Mayday${this.mayday.sea ? '; air-sea rescue was alerted' : ''}.`);
     // The player's own fate.
     const outcome = this.outcome();
     // Losses in the formation.
@@ -798,7 +986,7 @@ export class Sortie {
       const place = describePlace(this.map, q.pos.x, q.pos.z).replace(/^(over|near|off) /, '');
       if (q.status === 'flying' || q.status === 'landed') continue;
       if (chute) {
-        if (chute.overSea && !this.rescued(chute.pos)) losses.push({ name, line: LOSS_LINES.lostSea(name, place), lost: true });
+        if (chute.overSea && !this.rescued(chute.pos, this.asrAlerted.has(q.id))) losses.push({ name, line: LOSS_LINES.lostSea(name, place), lost: true });
         else if (isFrance(chute.pos.x, chute.pos.z)) losses.push({ name, line: LOSS_LINES.pow(name), lost: true });
         else losses.push({ name, line: `${name} baled out ${describePlace(this.map, chute.pos.x, chute.pos.z)} and is safe.`, lost: false });
       } else if (q.status === 'crashed' || q.status === 'destroyed') {
@@ -850,6 +1038,7 @@ export class Sortie {
       damageNotes: dmgNotes,
       outcome,
       raidNotes,
+      rtNotes,
       raidsTurned: turned,
       raidsBombed: bombed,
       bombsOnTargetKg: kg,
@@ -880,9 +1069,11 @@ export class Sortie {
       && p.fs.engine !== 'seized' && p.fs.engine !== 'dead' && p.fs.fuel > p.type.fuelCapacity * TUNING.sortie.writeUpFuel;
   }
 
-  private rescued(pos: Vec3): boolean {
+  private rescued(pos: Vec3, alerted = false): boolean {
     const d = distanceToEnglishCoast(this.map, pos.x, pos.z);
-    const p = d < 5000 ? 0.85 : d < 15000 ? 0.6 : d < 25000 ? 0.3 : 0.12;
+    let p = d < 5000 ? 0.85 : d < 15000 ? 0.6 : d < 25000 ? 0.3 : 0.12;
+    // Called in on the R/T: the launches know where to look.
+    if (alerted) p = Math.min(0.95, p + TUNING.sortie.asrBonus);
     return new Rng(Math.floor(pos.x) ^ Math.floor(pos.z) ^ this.spec.seed).chance(p);
   }
 
@@ -896,7 +1087,7 @@ export class Sortie {
     if (chute) {
       const pl = place(chute.pos);
       if (chute.overSea) {
-        if (this.rescued(chute.pos)) return { kind: 'bailSea', pilot: 'shaken', aircraft: 'writeOff', place: pl, line: LANDING_LINES.bailSeaRescued(pl, '', cause) };
+        if (this.rescued(chute.pos, !!this.mayday || this.asrAlerted.has(p.id))) return { kind: 'bailSea', pilot: 'shaken', aircraft: 'writeOff', place: pl, line: LANDING_LINES.bailSeaRescued(pl, '', cause) };
         return { kind: 'lostSea', pilot: 'lost', aircraft: 'writeOff', place: pl, line: `Baled out over the Channel off ${pl}. Not picked up.` };
       }
       if (isFrance(chute.pos.x, chute.pos.z)) return { kind: 'pow', pilot: 'lost', aircraft: 'writeOff', place: pl, line: 'Baled out over France. Taken prisoner.' };
@@ -908,7 +1099,7 @@ export class Sortie {
       return { kind: 'killed', pilot: 'lost', aircraft: 'writeOff', place: pl, line: `Killed ${describePlace(this.map, p.pos.x, p.pos.z)}.` };
     }
     if (p.status === 'ditched' || r?.kind === 'ditched') {
-      if (this.rescued(p.pos)) return { kind: 'ditched', pilot: r?.pilot ?? 'shaken', aircraft: 'writeOff', place: pl, line: LANDING_LINES.ditched(pl, '', cause) };
+      if (this.rescued(p.pos, !!this.mayday || this.asrAlerted.has(p.id))) return { kind: 'ditched', pilot: r?.pilot ?? 'shaken', aircraft: 'writeOff', place: pl, line: LANDING_LINES.ditched(pl, '', cause) };
       return { kind: 'lostSea', pilot: 'lost', aircraft: 'writeOff', place: pl, line: `Ditched off ${pl}. Not picked up.` };
     }
     const surface = this.map.fieldAt(p.pos.x, p.pos.z).crop ?? this.map.surfaceAt(p.pos.x, p.pos.z);
@@ -932,6 +1123,12 @@ export class Sortie {
 }
 
 /** Day of the campaign as 0..1 for crop colours (early July → end of October). */
+/** "five minutes" */
+export function sayMinutes(n: number): string {
+  const w = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+  return `${w[n] ?? String(n)} minute${n === 1 ? '' : 's'}`;
+}
+
 export function seasonOf(month: number, day: number): number {
   const doy = dayOfYear(month, day);
   return Math.max(0, Math.min(1, (doy - dayOfYear(7, 1)) / (dayOfYear(10, 31) - dayOfYear(7, 1))));

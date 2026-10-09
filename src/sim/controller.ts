@@ -94,6 +94,8 @@ export class SectorController {
   private warnedFrance = false;
   private warnedEdge = false;
   private ackedTally = false;
+  /** The leader asked for a vector: answer with one, fight or no fight. */
+  private vectorAsked = false;
   targetRaid: Raid | null = null;
   lastVector: Vector | null = null;
   lastAngels = 0;
@@ -129,10 +131,14 @@ export class SectorController {
     if (!v.overFrance) this.warnedFrance = false;
     if (v.offMap && !this.warnedEdge) { this.warnedEdge = true; this.say(v.time, RT.comeHome(this.squadron, this.callsign), 'controller', true, fade); }
     if (!v.offMap) this.warnedEdge = false;
-    if (this.pancaked) return;
+    if (this.pancaked) {
+      if (this.vectorAsked && v.time >= this.nextVector) { this.vectorAsked = false; this.say(v.time, RT.noTrade(this.squadron, this.callsign, sayAngels(15000)), 'controller', true, fade); }
+      return;
+    }
     // Choose the raid to send us at: the nearest one still coming in.
     const live = v.raids.filter((r) => r.started && !r.turnedBack && r.phase !== 'outbound' && r.estimatedStrength > 0);
     if (!live.length || v.wantsHome) {
+      if (this.vectorAsked && v.time >= this.nextVector) { this.vectorAsked = false; this.say(v.time, RT.noTrade(this.squadron, this.callsign, sayAngels(15000)), 'controller', true, fade); }
       if (v.time > C.minSortie && (v.raids.every((r) => r.phase === 'outbound' || r.turnedBack || !r.started) || v.wantsHome)) {
         this.pancaked = true;
         this.say(v.time, v.wantsHome ? RT.pancakeFuel(this.squadron, this.callsign) : RT.pancake(this.squadron, this.callsign), 'controller', true, fade);
@@ -150,13 +156,13 @@ export class SectorController {
       this.nextVector = Math.min(this.nextVector, v.time + 5);
     }
     const raid = this.targetRaid;
-    if (v.engaged) {
+    if (v.engaged && !this.vectorAsked) {
       if (!this.ackedTally) { this.ackedTally = true; this.say(v.time, RT.tallyAck(this.callsign), 'controller', false, fade); }
       return;
     }
     const d = raid.plot.distTo(v.pos);
     // Close in: the controller calls it, and the pilots should see them soon.
-    if (d < C.closeRange && v.time - this.lastClose > C.closeEvery) {
+    if (!this.vectorAsked && d < C.closeRange && v.time - this.lastClose > C.closeEvery) {
       this.lastClose = v.time;
       const brg = Math.atan2(raid.plot.x - v.pos.x, raid.plot.z - v.pos.z);
       const rel = raid.plot.y + raid.heightError > v.pos.y + 600 ? 'above' : raid.plot.y + raid.heightError < v.pos.y - 600 ? 'below' : 'same level';
@@ -171,7 +177,8 @@ export class SectorController {
     const plotPos = raid.plot.clone().add(new Vec3((this.rng.next() - 0.5) * C.plotError, 0, (this.rng.next() - 0.5) * C.plotError));
     const vec = interceptVector(v.pos, Math.max(v.speed, C.assumedSpeed), plotPos, raid.vel);
     const angelsFt = reportedHeight(raid.plot.y, raid, this.rng) * M_TO_FT;
-    const first = !this.lastVector;
+    const first = !this.lastVector || this.vectorAsked;
+    this.vectorAsked = false;
     this.lastVector = vec;
     this.lastAngels = angelsFt;
     const buster = vec.time > C.busterTime || !vec.feasible;
@@ -180,6 +187,12 @@ export class SectorController {
       ? RT.vector(this.squadron, this.callsign, sayHeading((vec.heading * 180) / Math.PI), sayAngels(angelsFt), buster, sayStrength(raid.estimatedStrength), where)
       : RT.update(this.squadron, this.callsign, sayHeading((vec.heading * 180) / Math.PI), sayStrength(raid.estimatedStrength), where, sayAngels(angelsFt));
     this.say(v.time, text, 'controller', true, fade);
+  }
+
+  /** The leader asks for a vector: one comes in a few seconds, said in full. */
+  askVector(time: number): void {
+    this.vectorAsked = true;
+    this.nextVector = time + 3;
   }
 
   /** Put the squadron on to a different raid (asked for on the R/T); a fresh vector follows. */
