@@ -5,7 +5,7 @@
 
 import type { App } from '../app';
 import { ContextButton } from '../input/devices';
-import { ControlFrame } from '../input/input';
+import { ControlFrame, SimCmd } from '../input/input';
 import { drawText } from '../render/font';
 import { FrameBuffer, W } from '../render/framebuffer';
 import { C } from '../render/palette';
@@ -42,6 +42,8 @@ export interface FlownSortie {
   readonly homing?: Homing | null;
   /** Arcade's jump to the raid after a real take-off: why not now, or null if it can (RAF sortie only). */
   raidJumpRefusal?(): string | null;
+  /** The calls on the R/T menu right now (RAF sortie only; without it, R/T is just tally-ho). */
+  rtOptions?(): { cmd: SimCmd; label: string }[];
   /** The docking computer (jump to finals and autoland), where the sortie has one. */
   readonly docking?: { readonly active: boolean };
 }
@@ -55,6 +57,8 @@ export class SortieScreen extends FlightScreen {
   private mapOpen = false;
   private plot = new OpsPlot();
   private rtShown = 0;
+  /** The R/T menu is open. */
+  private rtOpen = false;
   private rtHeard = 0;
   private rtText = '';
   private rtFrom = '';
@@ -96,8 +100,24 @@ export class SortieScreen extends FlightScreen {
 
   frame(): void {
     const s = this.app.input;
+    const so = this.sortie;
     if (s.consume('map')) this.mapOpen = !this.mapOpen;
     if (this.mapOpen && s.taps.length) { this.mapOpen = false; s.taps.length = 0; }
+    // The R/T menu: open it, and pick a call (1-6, or 1-4 while it's open instead of the orders).
+    if (s.consume('rt')) {
+      if (so.rtOptions) this.rtOpen = !this.rtOpen && so.rtOptions().length > 0;
+      else this.cmd('tallyHo');
+    }
+    if (this.rtOpen) {
+      const opts = so.rtOptions!();
+      if (!opts.length) this.rtOpen = false;
+      const keys = [['rt1', 'order1'], ['rt2', 'order2'], ['rt3', 'order3'], ['rt4', 'order4'], ['rt5'], ['rt6']] as const;
+      keys.forEach((ks, i) => {
+        let hit = false;
+        for (const k of ks) if (s.consume(k)) hit = true;
+        if (hit && opts[i] && this.rtOpen) { this.cmd(opts[i].cmd); this.rtOpen = false; }
+      });
+    }
     if (s.consume('tallyHo')) this.cmd('tallyHo');
     if (s.consume('homing')) this.cmd('homing');
     if (s.consume('jumpHome')) this.cmd('jumpHome');
@@ -166,9 +186,23 @@ export class SortieScreen extends FlightScreen {
     super.render(fb);
     if (this.sortie.docking?.active && (this.world.tick >> 4) & 1) drawText(fb, 'AUTOLAND - MOVE STICK TO TAKE OVER', 92, 150, C.SIGHT, 'tiny');
     this.drawRT(fb);
+    this.drawRTMenu(fb);
     if (this.sortie.phase === 'startup' && this.messageT <= 0) {
       drawText(fb, this.app.settings.assist ? 'PRESS START' : 'PRIMER - MAGS - STARTER', 4, 160, C.SIGHT, 'tiny');
     }
+  }
+
+  /** The R/T menu, numbered for the keyboard (on a touch screen the buttons show it too). */
+  private drawRTMenu(fb: FrameBuffer): void {
+    // On a touch screen the buttons are the menu; the list is for the keyboard.
+    if (!this.rtOpen || !this.sortie.rtOptions || this.app.input.lastSource === 'touch') return;
+    const opts = this.sortie.rtOptions();
+    const cam = this.cam;
+    // Clear of the big speed and height readouts along the bottom of the view.
+    const h = 10 + opts.length * 7, x = cam.vx0 + 4, y = cam.vy1 - h - 30;
+    fillRect(fb, x, y, 92, h, C.BLACK);
+    drawText(fb, 'R/T  (Q CLOSES)', x + 3, y + 2, C.RED, 'tiny');
+    opts.forEach((o, i) => drawText(fb, `${i + 1} ${o.label}`, x + 3, y + 9 + i * 7, o.cmd === 'rtMayday' ? C.FIRE_R : C.SIGHT, 'tiny'));
   }
 
   /** The crackly R/T bar across the top: text types out under a hiss. */
@@ -198,6 +232,11 @@ export class SortieScreen extends FlightScreen {
   contextButtons(): ContextButton[] {
     if (this.paused) return [];
     const so = this.sortie;
+    // The R/T menu takes over the column while it's open.
+    if (this.rtOpen && so.rtOptions) {
+      const acts = ['rt1', 'rt2', 'rt3', 'rt4', 'rt5', 'rt6'] as const;
+      return [...so.rtOptions().map((o, i) => ({ action: acts[i], label: o.label, lit: o.cmd === 'rtMayday' })), { action: 'rt' as const, label: 'CLOSE' }];
+    }
     const fs = this.player.fs;
     if (so.phase === 'startup' && (fs.engine === 'off' || fs.engine === 'starting')) {
       if (this.app.settings.assist) return [{ action: 'start', label: 'START' }];

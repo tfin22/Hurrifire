@@ -14,7 +14,8 @@ export type Action =
   | 'bailOut' | 'map' | 'debug' | 'pause' | 'help'
   | 'up' | 'down' | 'left' | 'right' | 'ok' | 'back'
   | 'trackCycle' | 'panel' | 'boost' | 'canopy' | 'debugNext' | 'debugAct'
-  | 'homing' | 'engineOff' | 'jumpHome' | 'jumpRaid';
+  | 'homing' | 'engineOff' | 'jumpHome' | 'jumpRaid'
+  | 'rt' | 'rt1' | 'rt2' | 'rt3' | 'rt4' | 'rt5' | 'rt6';
 
 export interface Tap {
   /** In framebuffer pixels (0..320, 0..256). */
@@ -76,7 +77,8 @@ export function stickCurve(x: number): number {
 export type SimCmd =
   | 'gear' | 'flaps' | 'bailOut' | 'primer' | 'mags' | 'starter' | 'startAll'
   | 'tallyHo' | 'order1' | 'order2' | 'order3' | 'order4' | 'canopy'
-  | 'homing' | 'engineOff' | 'jumpHome' | 'jumpRaid';
+  | 'homing' | 'engineOff' | 'jumpHome' | 'jumpRaid'
+  | 'rtVector' | 'rtNewRaid' | 'rtFix' | 'rtHelp' | 'rtReport' | 'rtMayday';
 
 /** Control inputs for one simulation tick, quantised so replays are exact. */
 export interface ControlFrame {

@@ -775,3 +775,65 @@ behaviour:
 
 In that worst case, a tick fell from 3.1 ms to 1.55 ms mean on the
 development machine.
+
+## The R/T menu
+
+Playtest: "Expand the R/T with the controllers past just homing. Request a
+vector to my target at any time, or to a new target... report status if
+I'm damaged, low on fuel or out of ammo and leaving the fight. It annoys me
+that I get 'the raid continued' in the action report when I've expended all
+my ammo and taken down 5 bombers. Maybe call up air-sea rescue as well...
+Maybe just have an R/T button that opens a sub-menu with situation-specific
+options."
+
+- **The R/T button** (key **Q**) replaces TALLY-HO on the right. Tally-ho
+  is now in the menu, and the squadron calls it by itself when it's
+  obvious. T still works.
+  - While the menu is open, the left-hand column shows up to six calls
+    that fit the moment, plus CLOSE.
+  - Keys 1–6 pick a call; 1–4 are R/T calls while the menu is open, not
+    orders.
+  - With a keyboard, a numbered list also shows in the view, above the
+    speed and height readouts.
+  - Flying the 109 there's no controller, so R/T is just tally-ho.
+- **The calls**, most pressing first:
+  - **MAYDAY**, when you're in real trouble: on fire, engine gone, glycol
+    leak, wounded or badly hit. The controller acknowledges. Over the sea,
+    air-sea rescue is alerted, adding 25% (to a maximum of 95%) to your
+    chance of being picked up if you go in.
+  - **RTB: NO AMMO / DAMAGED / WOUNDED / FUEL**, whichever applies. You
+    report breaking off, the controller says pancake and gives you a
+    homing, and the action report records it.
+  - **TALLY-HO**, with the enemy in reach and the squadron not yet in.
+  - **VECTOR**: a fresh vector to your raid in a few seconds, said in
+    full, even in the middle of a fight. With nothing to go after: "orbit
+    base".
+  - **NEW RAID**, when another raid is up. You give your angels and
+    position. The controller puts you on the nearest other raid (bombers
+    before sweeps) and the yellow box moves to it. If you were engaged, the
+    squadron re-forms to follow the new vector.
+  - **SEND HELP**, against a raid of ten or more you're fighting or within
+    15 km of, once per raid. The nearest squadron not yet in a fight is
+    turned on to your raid; otherwise a fresh one is scrambled from the
+    nearest airfield. You're told who's coming and roughly how long.
+  - **FIX**: where you are, your angels, and the bearing and distance of
+    the nearest field.
+  - **HOMING**, as before.
+
+  Every call is a recorded command, like the orders, so a replay says and
+  does the same. A call that no longer fits when it arrives does nothing.
+- **Calls made for you:**
+  - **Air-sea rescue.** When one of the squadron ditches, or comes down by
+    parachute in the sea, the nearest wingman within 15 km calls it in
+    ("Blue Two is in the drink, off Dungeness!"). The controller confirms,
+    and that pilot gets the same 25% to their rescue chance. This covers
+    you too, if you didn't get a Mayday off.
+  - **Look out above.** A free hunt that comes within 15 km of you, and
+    isn't the raid you were sent after, gets one warning from the
+    controller: where it is and its height off the plot.
+- **The action report credits you.**
+  - A raid's line names what you shot down from it.
+  - If you reported breaking off, it says so instead of "still on its way
+    when you left it": "You broke off out of ammunition, having shot down
+    5 of it; the raid went on to Kenley."
+  - Under YOU, the report and any Mayday get their own lines.

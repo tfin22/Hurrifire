@@ -288,6 +288,12 @@ export const TUNING = {
     writeUpFuel: 0.06,
     /** Leading: the squadron goes in by itself once an enemy is this close (m), or you open fire, or one of you is hit. */
     autoTallyRange: 2500,
+    /** A Mayday or a wingman's call to air-sea rescue adds this to the chance of being picked up. */
+    asrBonus: 0.25,
+    /** The controller warns of a free hunt that comes within this range of you (m). */
+    huntWarnRange: 15000,
+    /** Asking for help: only against a raid this strong (aircraft, radar estimate). */
+    helpMinStrength: 10,
     /** Wingmen's "break!" calls: an enemy fighter on your tail inside this range (m), at most this often (s). */
     breakCallRange: 800,
     breakCallEvery: 12,

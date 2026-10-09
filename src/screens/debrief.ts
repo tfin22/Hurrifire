@@ -40,6 +40,7 @@ export class DebriefScreen implements Screen {
     L('YOU', C.SIGHT);
     L(`Rounds fired: ${r.roundsFired}.`);
     L(r.damageTaken > 0.01 ? `Damage: ${r.damageNotes.join(', ')}.` : 'Aircraft undamaged.');
+    for (const n of r.rtNotes ?? []) L(n);
     L(r.outcome.line);
     if (r.outcome.writtenUp) L(r.outcome.writtenUp, C.FIRE_R);
     if (r.outcome.kind === 'ditched' || r.outcome.kind === 'lostSea') L(DEBRIEF.ditchAdvice, C.GREY_L);
@@ -216,7 +217,7 @@ export class SettingsScreen implements Screen {
     if (this.menu.sel === 1) drawTextCentered(fb, ENEMY_HELP[st.enemy], 160, 229, C.CHALK, 'tiny');
     else drawTextCentered(fb, st.arcade ? (st.arcadeTakeoff ? 'ARCADE: TAKE OFF, JUMP TO THE RAID, QUICK AND TOUGH' : 'ARCADE: START NEAR THE RAID, QUICK AND TOUGH, NO BLACKOUT') : st.assist ? 'ASSIST: LEAD MARKER, LANDING AIDS, ONE START BUTTON' : 'AUTHENTIC: AS IT WAS', 160, 229, C.CHALK, 'tiny');
     drawTextCentered(fb, 'KEYS: ARROWS/WASD STICK, SPACE FIRE, +/- THROTTLE, G GEAR, F FLAPS,', 160, 238, C.GREY_L, 'tiny');
-    drawTextCentered(fb, 'P PADLOCK, B LOOK BACK, T TALLY-HO, 1-4 ORDERS, M MAP, V HOMING,', 160, 245, C.GREY_L, 'tiny');
-    drawTextCentered(fb, 'I START, R JUMP TO RAID, N JUMP HOME, X ENGINE OFF, J BAIL OUT, [ ] TIME', 160, 252, C.GREY_L, 'tiny');
+    drawTextCentered(fb, 'P PADLOCK, B LOOK BACK, Q R/T MENU, T TALLY-HO, 1-4 ORDERS, M MAP,', 160, 245, C.GREY_L, 'tiny');
+    drawTextCentered(fb, 'I START, R RAID, N HOME, V HOMING, X ENGINE OFF, J BAIL OUT, [ ] TIME', 160, 252, C.GREY_L, 'tiny');
   }
 }
