@@ -1008,3 +1008,48 @@ needs about 3,000 m to recover, where a Spitfire needs 2,000.
 so it applies to enemy 109s diving on you as well. In the probe of a 109
 bouncing you: normal is identical, and at flight school and Spain
 veterans one more pass in twelve fails to get you.
+
+### Rebalanced: chaos, and the 109 diving away
+
+Playtest: "Maybe it went a bit too much the RAF way now? The 109 can
+generally dive away. Can you simulate 3 v 3? The kills were in chaos. A
+single 109 against a Hurricane or Spitfire was usually stalemate, decided
+on fuel?"
+
+Measured with real fuel states: RAF fighters at 90% over home, 109s at
+62% as they arrive over England and turning for home at 42%. Ten-minute
+fights, 12 of each.
+
+- **One-on-ones** mostly came out as suggested. From crossing courses,
+  half had no kill: the 109 dived away, ran low on fuel or the two lost
+  each other, and the kills that did happen were about even.
+- **Side by side** the RAF won 0–5, and in three-a-side 5–19. The cause:
+  out-turned, the 109's dive-away only worked above 95 m/s, and a slow
+  turning fight is exactly where it isn't. So it tried to out-turn a
+  Spitfire.
+
+Changes:
+- **Out-turned, a 109 pushes over and dives away down to 60 m/s**, not
+  just when fast. The Merlin behind it cuts out under the negative G.
+  Only from an attacker behind: hit head-on, it breaks sideways, because
+  pushing over straight ahead keeps it in the Spitfire's sights.
+- **Having dived away, a fighter within 8% of its bingo fuel goes home**
+  rather than coming back for more.
+
+Three against three, mixed skills (green to experte), 12 fights each:
+
+| Start | RAF lost | 109s lost | 109s went home / dived away |
+|---|---|---|---|
+| Spitfires, crossing courses | 13 | 14 | 19 |
+| Hurricanes, crossing courses | 11 | 13 | 27 |
+| Spitfires, 109s 1,000 m above | 13 | 15 | 20 |
+| Hurricanes, 109s 1,000 m above | 8 | 12 | 20 |
+| Spitfires, side by side, level | 4 | 19 | 20 |
+
+Chaotic and roughly even. The exception is a level, side-by-side start at
+the same speed: the 109's worst case and the Spitfire's best, a straight
+turning fight. Historically the 109 pilot avoided that by fighting from
+above; in the game's raids, the escort flies 600–2,000 m above the
+bombers.
+
+The probe of a 109 bouncing you is unchanged from the previous change.

@@ -262,15 +262,26 @@ export class FighterBrain implements Brain {
     if (this.state === 'extend' && (this.stateT > TUNING.ai.extendSeconds || fs.ias > me.skill.minSpeed + 45)) {
       this.set(me.type.id === 'bf109' ? 'zoom' : 'attack');
     }
-    if (this.state === 'zoom' && (this.stateT > TUNING.ai.zoomSeconds || fs.ias < me.skill.minSpeed + 15)) this.set('attack');
+    if (this.state === 'zoom' && (this.stateT > TUNING.ai.zoomSeconds || fs.ias < me.skill.minSpeed + 15)) {
+      // Clear of the fight, and fuel getting short: that's enough for today.
+      const bingo = this.opts.bingo ?? (me.type.id === 'bf109' ? TUNING.ai.bingoFuel109 : 0.2);
+      if (fs.fuel < me.type.fuelCapacity * (bingo + TUNING.ai.goHomeMargin)) { this.set('rtb'); this.targetId = -1; }
+      else this.set('attack');
+    }
   }
 
   private decideEvasion(me: Plane, ctx: AIContext): void {
     const fs = me.fs;
     const t = this.find(ctx, this.threatId);
-    const canBunt = me.type.fuelInjected && fs.pos.y > 1500 && fs.ias > 95 && me.skill.level !== 'green';
+    // Out-turned (a Spitfire or Hurricane behind, inside our turn), a 109 doesn't
+    // try to turn with it: push over and dive away, even slow. The pursuer's
+    // carburettor cuts out under the negative G.
+    // (Only from behind: shot at head-on, pushing over straight ahead just keeps you in his sights.)
+    const behind = !!t && fs.forward().dot(t.pos.clone().sub(fs.pos)) < 0;
+    const outTurned = behind && turnEdge(me, t!) < 1 / TUNING.ai.turnEdge;
+    const canBunt = me.type.fuelInjected && fs.pos.y > 1500 && fs.ias > (outTurned ? TUNING.ai.buntMinIasOutTurned : 95) && me.skill.level !== 'green';
     const pursuerCarb = t ? !t.type.fuelInjected : false;
-    if (canBunt && (pursuerCarb || ctx.rng.chance(0.4))) {
+    if (canBunt && (!t || behind) && (pursuerCarb || outTurned || ctx.rng.chance(0.4))) {
       this.set('bunt');
       return;
     }

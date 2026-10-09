@@ -186,3 +186,53 @@ describe("the 109's heavy elevator", () => {
     }
   }, 120000);
 });
+
+describe('the chaos of a real fight', () => {
+  it('a 109 out-turned by a Spitfire behind it pushes over and dives away instead of turning', () => {
+    const w = new World(3, flat);
+    const b = w.addPlane('bf109', 'lw', 'B'), s = w.addPlane('spitfire', 'raf', 'S');
+    b.skill = skillFor('average');
+    s.skill = skillFor('average');
+    b.fs.setAirborne(new Vec3(0, 3000, 0), 0, 80);
+    s.fs.setAirborne(new Vec3(0, 3000, -250), 0, 80);
+    const bb = new FighterBrain({});
+    b.brain = bb;
+    bb.contacts.tell(s.id, 0);
+    bb.onHit(b, s.id, (w as unknown as { ctx: never }).ctx);
+    expect(bb.state).toBe('bunt');
+  });
+
+  it('three against three from crossing courses, mixed skills: losses on both sides, roughly even, and 109s leave the fight', () => {
+    const MIX = ['green', 'average', 'average', 'average', 'experte'] as const;
+    let rafLost = 0, lwLost = 0, lwLeft = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const w = new World(seed, flat);
+      w.sun.set(0.3, 0.8, 0.5);
+      const R: ReturnType<World['addPlane']>[] = [], L: ReturnType<World['addPlane']>[] = [];
+      for (let i = 0; i < 3; i++) {
+        const a = w.addPlane('spitfire', 'raf', `R${i}`, 0.9);
+        a.skill = skillFor(MIX[(seed + i) % 5]);
+        a.fs.setAirborne(new Vec3(i * 60, 4000 - i * 10, -i * 50), 0, 120);
+        a.brain = new FighterBrain(i ? { leader: R[0], slot: new Vec3(i * 60, -10 * i, -50 * i) } : {});
+        R.push(a);
+        const b = w.addPlane('bf109', 'lw', `L${i}`, 0.62);
+        b.skill = skillFor(MIX[(seed * 3 + i) % 5]);
+        b.fs.setAirborne(new Vec3(1600 - i * 50, 4000, 1600 + i * 60), -Math.PI / 2, 120);
+        b.brain = new FighterBrain(i ? { leader: L[0], slot: new Vec3(-i * 60, -10 * i, -50 * i) } : {});
+        L.push(b);
+      }
+      for (let i = 0; i < 600 * 50; i++) {
+        w.step(null);
+        if (!R.some((p) => p.alive) || !L.some((p) => p.alive && (p.brain as FighterBrain).state !== 'rtb')) break;
+      }
+      rafLost += R.filter((p) => !p.alive).length;
+      lwLost += L.filter((p) => !p.alive).length;
+      lwLeft += L.filter((p) => p.alive && (p.brain as FighterBrain).state === 'rtb').length;
+    }
+    expect(rafLost).toBeGreaterThan(2);
+    expect(lwLost).toBeGreaterThan(2);
+    expect(lwLost / rafLost).toBeGreaterThan(0.5);
+    expect(lwLost / rafLost).toBeLessThan(2);
+    expect(lwLeft).toBeGreaterThan(0);
+  }, 180000);
+});

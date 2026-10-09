@@ -183,6 +183,10 @@ export const TUNING = {
     snapDeg: { green: 4, average: 2.5, experte: 2 } as Record<string, number>,
     /** How well a pilot judges when to start a pull-out, drawn afresh each dive (1 = right): green pilots sometimes leave it too late. */
     pullOutJudgement: { green: [0.45, 1.05], average: [1, 1.1], experte: [1, 1] } as Record<string, readonly [number, number]>,
+    /** An out-turned 109 pushes over and dives away down to this airspeed (m/s IAS), not just when fast. */
+    buntMinIasOutTurned: 60,
+    /** Having dived away, a fighter this close to its bingo fuel (fraction) goes home rather than coming back. */
+    goHomeMargin: 0.08,
     /** A Spitfire or Hurricane with a 109 (heavy elevator) behind: the chance it dives for the deck rather than breaking, between these heights (m). */
     diveOutChance: 0.4,
     /** ...only with him still out of gun range (m): from close behind, a straight dive is just a better target. */
