@@ -86,6 +86,11 @@ export const TUNING = {
     /** A heavy elevator (the 109) held full back at speed: trim wound in per second (0..1), and how much of the lost G it gives back. */
     trimRate: 0.3,
     trimGain: 0.6,
+    /** The player's aircraft: stick inside this counts as neutral, which holds the path and the speed it was trimmed for. */
+    trimStick: 0.05,
+    /** How strongly it seeks that speed (0 = only holds the path), and limits on the correction ((V/Vtrim)² clamp). */
+    trimSpeedGain: 0.6,
+    trimSpeedK: [0.6, 1.4] as const,
     brakeFriction: 0.3,
     sideFriction: 0.8,
     groundRudder: 0.6,

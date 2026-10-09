@@ -1053,3 +1053,33 @@ above; in the game's raids, the escort flies 600–2,000 m above the
 bombers.
 
 The probe of a 109 bouncing you is unchanged from the previous change.
+
+## Trim: hands off, the aircraft holds what it was doing
+
+Playtest: "When climbing, the Hurricane at least seems to be out of trim
+and continues to climb at an increasing rate till stall."
+
+True of every type. The stick commanded a load factor, with neutral stick
+meaning 1 g. In a steady climb at angle γ, though, the wing only has to
+carry cos γ of the weight. Asking for a full 1 g keeps bending the flight
+path upwards, so the climb steepens until the aircraft stalls. Let go in a
+15° climb, the Hurricane went to 33° and stalled within 30 s; the
+Spitfire and 109 got to 42–44°.
+
+Now, for the player's aircraft:
+- **Neutral stick holds the flight path** (cos γ, not 1 g), as if trimmed
+  for whatever it's doing.
+- **It's speed-stable, like any trimmed aircraft.** When the stick comes
+  back to neutral it remembers the speed. Slower than that and the path
+  eases down; faster and it eases up. (The correction is
+  0.6 × ((V/Vtrim)² − 1), clamped.)
+
+Let go in a 15° climb at full power, all three settle into a climb they
+can hold, 6–11° at about 165 mph, and never stall. Let go level, they stay
+level, or climb gently on spare power. Let go in a dive, they ease out by
+themselves with a gentle phugoid.
+
+Pulling and pushing work from that baseline: full back stick is still
+the full G, and the push to zero G is unchanged. The AI flies with its
+own closed-loop controllers and was balanced against the 1 g neutral, so
+it keeps it (`trimPath` is the player's only).
