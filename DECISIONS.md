@@ -696,3 +696,82 @@ So the setting moves the grade and scales on top:
   who manoeuvres, they spot sooner, don't overshoot, and bunt away.
 - Settings only, not the pause menu. Changing it mid-sortie would leave
   pilots already rated at the old level.
+
+## A living sky
+
+Playtest: "There's only one group of enemies and allies in the sky... it
+should be more organic: other allies coming in (maybe even 12 Group's big
+wing), and multiple raids at the same time, at least on occasion... if you
+stumbled across one while vectored elsewhere you should see it, or better,
+be jumped out of the blue by roving enemy. It was chaotic in those skies
+AND intensely calm."
+
+- **Several raids.** A sortie now gets one to three raids, weighted by phase:
+  - July: mostly one.
+  - September: two or three more often than not.
+  - 15 September: always at least three.
+
+  Each goes for a different target. Each later one starts 2½ to 7 minutes
+  after the one before, so they can be miles apart. Quick Combat still
+  gives exactly what you chose.
+- **Free hunts.** In 25–50% of sorties, depending on phase, a *Freie Jagd*
+  of four to eight 109s roves over Kent or the estuary. They fly at
+  6,500–8,000 m, mostly experten, with no bombers to guard. They attack
+  whatever they see.
+- **Other squadrons.** Each raid carrying bombs draws none, one or two
+  squadrons from other sectors, mostly one. They have their own callsigns,
+  bases, Spitfires or Hurricanes, and scramble times.
+  - **Out of sight**, a squadron is a plot. It climbs at 11 m/s, flies an
+    intercept, and fights the raid in 20-second rounds. Each round there's
+    a 35% chance a bomber goes down, 6% that the raid is broken up and
+    turns back, and 8% that the squadron loses one. Below 40% of its
+    bombers, a raid always turns back. After 12 rounds the squadron is out
+    of ammunition and goes home.
+  - **In sight**, the plot becomes real aircraft that fly and fight like
+    everyone else. That's within 15 km of you, or within 8 km of a raid
+    that's already real. Each real aircraft has its own home base.
+  - **Back home**, once more than 30 km from you, they're put down at their
+    airfield.
+- **12 Group's big wing.** In the London phase, half the time, three
+  squadrons come down from Duxford. They circle for six minutes to form
+  up, come in 1,500 m above the raid, and go for the biggest one. The
+  controller tells you when they set off.
+- **What you hear.**
+  - The controller tells you when another squadron is after your raid, and
+    when it engages ("Kestrel squadron is engaging your raid near
+    Canterbury").
+  - Other squadrons' tally-hos come through in grey.
+  - Out of sight, a tally-ho comes through broken up.
+- **The controller keeps you on one raid.** Before, the target was simply
+  the nearest raid each moment, so with several up the box would hop
+  between them. Now the controller keeps the raid it gave you while it's
+  still coming. It prefers raids carrying bombs over fighter sweeps, and
+  a new raid gets a fresh vector in full. `assign()` is ready for the R/T
+  menu's "new target".
+- **Markers: what you were sent after, and what you could really see.**
+  - Only the raid you're vectored on gets the yellow radar box. It is
+    marked out to the usual range once it's in sight.
+  - Any other formation is marked only within 9 km, with clear air between
+    you, and not when it's within 14° of the sun. A free hunt diving out
+    of the sun stays unmarked until it's on you; your wingmen's break call
+    is the warning.
+  - With no controller (flying the 109) nothing changes.
+- **The action report** has a line for each raid. It names the squadrons
+  that also engaged a raid and how many of its bombers were lost. Free
+  hunts get "109s were hunting over...", and the heading becomes "THE
+  RAIDS" when there's more than one.
+- **A raid keeps its own copy of the plan.** Losses out of sight come off
+  that copy, so a replay of the sortie starts from the original raid.
+
+**Performance.** The worst case found was 133 aircraft at once: two London
+raids, the big wing, our squadron and a free hunt. That doubled the
+simulation's cost, so two hot paths were made cheaper without changing
+behaviour:
+- **Bullets** first reject any aircraft more than 180 m away on either
+  horizontal axis. No hit radius, even with big targets, comes near that,
+  so long shots still land.
+- **Ground type** (what the ground is made of) is only looked up within
+  30 m of it. Ground height is still checked every tick.
+
+In that worst case, a tick fell from 3.1 ms to 1.55 ms mean on the
+development machine.

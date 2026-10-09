@@ -13,6 +13,7 @@ import type { FrameBuffer } from '../render/framebuffer';
 import { C } from '../render/palette';
 import { fillConvex, line, rectOutline } from '../render/raster';
 import type { Plane } from '../sim/plane';
+import type { Raid } from '../sim/raid';
 import type { Homing } from '../sim/sortie';
 import type { World } from '../sim/world';
 import { TUNING } from '../tuning';
@@ -44,8 +45,15 @@ function placeOf(map: WorldMap | null, p: Vec3): string {
   return s;
 }
 
-/** Enemy aircraft gathered into formations, plus raids the radar has but nobody can see yet. */
-export function enemyGroups(world: World, me: Plane): Group[] {
+/**
+ * Enemy aircraft gathered into formations, plus raids the radar has but
+ * nobody can see yet. Given the raid the controller has put us on
+ * (`target`), only that one is reported from the radar; any other formation
+ * is marked only once it could really be seen: close, with clear air
+ * between, and not hidden in the sun (the Hun in the sun stays unmarked
+ * until he's on you). Without one (the 109 side), everything near is marked.
+ */
+export function enemyGroups(world: World, me: Plane, target?: Raid | null): Group[] {
   const S = TUNING.spotting;
   const enemies = world.planes
     .filter((q) => q.side !== me.side && q.status === 'flying')
@@ -59,10 +67,22 @@ export function enemyGroups(world: World, me: Plane): Group[] {
     groups.push({ members: [q], pos: q.pos.clone(), dist: d, reported: false, estimate: 0 });
   }
   for (const g of groups) g.pos.scale(1 / g.members.length);
+  const vectored = me.side === 'raf' && target !== undefined;
+  if (vectored) {
+    const sunCos = Math.cos((TUNING.effects.sunDazzleConeDeg * Math.PI) / 180);
+    const dir = new Vec3();
+    for (let i = groups.length - 1; i >= 0; i--) {
+      const g = groups[i];
+      if (target && g.members.some((m) => m.unit === target.spec.name)) continue;
+      dir.copy(g.pos).sub(me.pos).scale(1 / Math.max(1, g.dist));
+      const seen = g.dist < TUNING.sky.strayMarkRange && dir.dot(world.sun) < sunCos && world.losClear(me.pos, g.pos);
+      if (!seen) groups.splice(i, 1);
+    }
+  }
   // The RAF hears of raids from the radar long before anyone sees them.
   if (me.side === 'raf') {
     for (const r of world.raids) {
-      if (!r.started || r.spawned) continue;
+      if (!r.started || r.spawned || (vectored && r !== target)) continue;
       const pos = r.plot.clone();
       pos.y = r.alt + r.heightError;
       const d = pos.distTo(me.pos);
@@ -106,9 +126,9 @@ function label(fb: FrameBuffer, cam: Camera, text: string, x: number, y: number,
   return true;
 }
 
-export function drawSpotting(fb: FrameBuffer, cam: Camera, world: World, me: Plane, map: WorldMap | null): void {
+export function drawSpotting(fb: FrameBuffer, cam: Camera, world: World, me: Plane, map: WorldMap | null, target?: Raid | null): void {
   const S = TUNING.spotting;
-  const groups = enemyGroups(world, me);
+  const groups = enemyGroups(world, me, target);
   const out = { x: 0, y: 0, z: 0 };
   const unseen: Group[] = [];
   let labelled = 0;

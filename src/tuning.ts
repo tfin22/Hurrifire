@@ -309,6 +309,42 @@ export const TUNING = {
     minSortie: 240,
   },
 
+  /**
+   * A living sky: more than one raid at a time, 109s hunting on their own,
+   * and other squadrons up besides yours. Mostly it's empty and calm; now
+   * and then it's chaos.
+   */
+  sky: {
+    /** Raids at once, by phase: weights for one, two, three. */
+    raidCount: { channel: [6, 3, 1], airfields: [5, 4, 2], london: [2, 5, 3], jabo: [6, 3, 1] } as Record<string, number[]>,
+    /** Chance a free hunt of 109s is roving over Kent as well. */
+    freeHuntChance: { channel: 0.25, airfields: 0.4, london: 0.45, jabo: 0.5 } as Record<string, number>,
+    /** Each later raid starts this long after the one before (s). */
+    raidGap: [150, 420] as const,
+    /** Squadrons from other sectors sent against each raid: weights for none, one, two. */
+    othersPerRaid: [2, 5, 3],
+    /** 12 Group's big wing, in the London phase: chance, and squadrons in it. */
+    bigWingChance: 0.5,
+    bigWingSquadrons: 3,
+    /** Other squadrons turn into real aircraft inside this range of you (m), or of a raid in sight. */
+    friendSpawnRange: 15000,
+    /** Abstract climb rate (m/s) and cruise (m/s) of a squadron nobody can see. */
+    climbRate: 11,
+    cruise: 105,
+    /** Out of sight, a squadron meeting a raid fights it in rounds of this many seconds... */
+    fightRound: 20,
+    /** ...each round: chance a bomber goes down, chance the raid turns back, chance we lose one. */
+    roundKill: 0.35,
+    roundTurnBack: 0.06,
+    roundLoss: 0.08,
+    /** Rounds before they're out of ammunition and go home. */
+    fightRounds: 12,
+    /** Formations other than the one you were vectored on are marked only inside this range (m), and never in the sun. */
+    strayMarkRange: 9000,
+    /** Out of everyone's sight, an aircraft that has gone home is put down at its base beyond this range (m). */
+    retireRange: 30000,
+  },
+
   claims: {
     /** A target you hit hard and saw smoking/diving away gets claimed as destroyed this often. */
     overclaimSmoking: 0.6,

@@ -78,6 +78,11 @@ export const RT = {
     order4: (sq: string) => `${sq} Squadron, re-form on me.`,
   } as Record<string, (sq: string) => string>,
   wingmanAck: ['Roger, leader.', 'Understood.', 'Wilco.', 'Right with you.'],
+  // Other squadrons.
+  otherUp: (sq: string, ctl: string, other: string) => `${sq} Leader, ${ctl}. ${other} squadron is up as well, after the same raid.`,
+  otherEngaging: (sq: string, ctl: string, other: string, where: string) => `${sq} Leader, ${ctl}. ${other} squadron is engaging your raid ${where}.`,
+  otherTally: (other: string) => `${other} Leader: Tally-ho! Tally-ho! Going in!`,
+  bigWing: (sq: string, ctl: string, n: string, angels: string) => `${sq} Leader, ${ctl}. Twelve Group's wing is coming down from Duxford, ${n} aircraft at angels ${angels}.`,
 };
 
 /** Garble a message as the R/T fades with distance (over France). */
@@ -93,5 +98,8 @@ function cap(s: string): string {
 /** Invented callsigns: squadrons and sector controllers. */
 export const CALLSIGNS = {
   squadrons: ['Gannet', 'Tiger', 'Lemon', 'Rumba', 'Dysoe', 'Mandrel'],
+  /** Other 11 Group squadrons up at the same time, and 12 Group's wing. */
+  others: ['Kestrel', 'Pansy', 'Ripple', 'Bullseye', 'Hydro', 'Turban', 'Sorbo', 'Jacko'],
+  bigWing: ['Mitre', 'Caribou', 'Lion'],
   controllers: { 'Biggin Hill': 'Sapper', Kenley: 'Bovril', Hornchurch: 'Lumba', 'North Weald': 'Calfskin', Northolt: 'Garter', Tangmere: 'Shandy', Debden: 'Cowslip' } as Record<string, string>,
 };

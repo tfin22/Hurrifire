@@ -76,7 +76,9 @@ export class Raid implements RaidLink {
   /** Controller's radar errors, fixed per raid. */
   readonly heightError: number;
   readonly strengthFactor: number;
-  readonly total: number;
+  total: number;
+  /** Bombers lost out of everyone's sight, to other squadrons. */
+  lostUnseen = 0;
   started = false;
   /** The 110s' shared defensive circle. */
   readonly circle: DefensiveCircle = { centre: null, radius: 650, dir: 1, lastThreat: -100 };
@@ -87,8 +89,12 @@ export class Raid implements RaidLink {
   /** Bombers already counted as lost (for the crews alongside). */
   private lost = new Set<number>();
 
-  constructor(id: number, readonly spec: RaidSpec, rng: Rng) {
+  readonly spec: RaidSpec;
+
+  constructor(id: number, spec: RaidSpec, rng: Rng) {
     this.id = id;
+    // Our own copy: losses out of sight come off it, and a replay starts again from the original.
+    this.spec = spec = { ...spec, groups: spec.groups.map((g) => ({ ...g })) };
     this.route = [spec.start.clone(), spec.entry.clone(), spec.target.clone(), spec.entry.clone().add(new Vec3(6000, 0, -8000)), spec.start.clone()];
     this.route.forEach((p) => (p.y = spec.alt));
     // A formation flies at the pace of its slowest bombers, whatever the plan said.
@@ -131,6 +137,40 @@ export class Raid implements RaidLink {
   jettison(p: Plane): void {
     this.jettisoned++;
     this.drop?.(this, p, true);
+  }
+
+  /** True for a raid that brings bombs (not a fighter sweep). */
+  get bombing(): boolean {
+    return this.spec.groups.some((g) => g.role === 'bomber' || g.role === 'diveBomber' || g.role === 'jabo');
+  }
+
+  /** Bombers the raid set out with. */
+  get bombersAtStart(): number {
+    return this.bombersLeft + this.lostUnseen;
+  }
+
+  /** Bombers still to come, before the raid is in sight. */
+  get bombersLeft(): number {
+    return this.spec.groups.filter((g) => g.role === 'bomber' || g.role === 'diveBomber' || g.role === 'jabo').reduce((a, g) => a + g.count, 0);
+  }
+
+  /** Out of sight: another squadron shoots a bomber down. Returns whether there was one to lose. */
+  loseUnseen(): boolean {
+    if (this.spawned) return false;
+    const g = this.spec.groups.find((x) => (x.role === 'bomber' || x.role === 'diveBomber' || x.role === 'jabo') && x.count > 0);
+    if (!g) return false;
+    g.count--;
+    this.total--;
+    this.lostUnseen++;
+    return true;
+  }
+
+  /** Out of sight: broken up, the raid jettisons and goes home. */
+  turnBack(): void {
+    if (this.spawned || this.turnedBack || this.phase === 'outbound') return;
+    this.turnedBack = true;
+    this.phase = 'outbound';
+    this.leg = Math.max(this.leg, 3);
   }
 
   alarm(attackerId: number, time: number): void {

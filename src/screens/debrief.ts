@@ -33,7 +33,7 @@ export class DebriefScreen implements Screen {
       if (verdict) L(`  ${verdict}`);
     }
     L('');
-    L('THE RAID', C.SIGHT);
+    L(r.raidNotes.length > 1 ? 'THE RAIDS' : 'THE RAID', C.SIGHT);
     for (const n of r.raidNotes) L(n);
     L(`Enemy aircraft seen to go down: ${r.enemyDown}.`);
     L('');

@@ -68,6 +68,8 @@ export class Plane {
   seenCrash = false;
   /** Formation / unit bookkeeping. */
   unit = '';
+  /** Where this aircraft goes home to, if not its side's usual home (another squadron's base). */
+  home?: Vec3;
   /** Who shot it down (most damage). */
   killedBy = -1;
   /** Bombs still aboard (bombers). */
