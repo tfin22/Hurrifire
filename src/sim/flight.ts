@@ -93,6 +93,12 @@ export interface FlightEnv {
   autoRudder: boolean;
   /** Full back stick holds the wing at the buffet rather than stalling it (the player's assist). */
   stallGuard?: boolean;
+  /**
+   * Neutral stick holds the flight path, as if trimmed for it (the player's
+   * aircraft). Without it neutral asks for 1 g, which in a climb keeps
+   * bending the path up until it stalls.
+   */
+  trimPath?: boolean;
   /** Arcade handling: more thrust, quicker controls, no cut-out, no spins (the player's choice). */
   arcade?: boolean;
 }
@@ -152,6 +158,8 @@ export class FlightState {
   buffet = 0;
   /** Nose-up trim wound in to help a heavy elevator (0..1): full back stick at speed gradually wins back G. */
   trim = 0;
+  /** The speed (m/s) the aircraft was trimmed for when the stick last came back to neutral. */
+  trimV = 0;
   spin = 0;
   spinDir = 1;
   heading = 0;
@@ -244,11 +252,11 @@ function clOf(t: AircraftType, alpha: number, flaps: number, liftMul: number): n
  * most of the forward travel; only the last part goes negative, so easing
  * into a dive doesn't cut the Merlin, but a hard bunt does.
  */
-export function commandedG(t: AircraftType, pitchIn: number, gMax = t.maxG): number {
+export function commandedG(t: AircraftType, pitchIn: number, gMax = t.maxG, gNeutral = 1): number {
   const T = TUNING.flight;
-  if (pitchIn >= 0) return 1 + Math.pow(pitchIn, T.pullCurve) * (gMax - 1);
+  if (pitchIn >= 0) return gNeutral + Math.pow(pitchIn, T.pullCurve) * (gMax - gNeutral);
   const x = -pitchIn, P = T.pushToZeroG;
-  if (x <= P) return 1 - Math.pow(x / P, 1.3);
+  if (x <= P) return gNeutral * (1 - Math.pow(x / P, 1.3));
   return ((x - P) / (1 - P)) * t.minG;
 }
 
@@ -372,7 +380,16 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   const eg = elevatorG(t, s.ias);
   if (eg < t.maxG && pitchIn > 0.8) s.trim = Math.min(1, s.trim + dt * T.trimRate);
   else s.trim = Math.max(0, s.trim - dt * T.trimRate * 2);
-  const gCmd = commandedG(t, pitchIn, env.arcade ? t.maxG : eg + s.trim * (t.maxG - eg) * T.trimGain);
+  // Neutral holds the path: in a climb or dive at angle γ the wing carries
+  // cos γ of the weight. And like any trimmed aircraft it's speed-stable:
+  // slower than it was trimmed for, the nose drops; faster, it rises.
+  let gNeutral = 1;
+  if (env.trimPath && V > 5) {
+    if (Math.abs(pitchIn) > T.trimStick || s.trimV <= 0) s.trimV = V;
+    const k = clamp((V / s.trimV) ** 2, T.trimSpeedK[0], T.trimSpeedK[1]);
+    gNeutral = Math.sqrt(Math.max(0, 1 - (vAir.y / V) ** 2)) * (1 + (k - 1) * T.trimSpeedGain);
+  }
+  const gCmd = commandedG(t, pitchIn, env.arcade ? t.maxG : eg + s.trim * (t.maxG - eg) * T.trimGain, gNeutral);
   const clReq = (gCmd * m * G) / Math.max(qbar * S * mods.liftMul, 1);
   let alphaReq = (clReq - t.cl0 - s.flaps * t.flapCl) / t.clAlpha;
   const asEff = t.alphaStall - s.flaps * 0.03;

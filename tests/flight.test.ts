@@ -252,3 +252,37 @@ describe('flight model: stall guard (player assist)', () => {
     }
   });
 });
+
+describe('trim: hands off, the aircraft holds what it was doing', () => {
+  async function handsOff(type: 'hurricane' | 'spitfire' | 'bf109', pitch: number, speed: number, secs: number, throttle = 1) {
+    const { World } = await import('../src/sim/world');
+    const { Vec3 } = await import('../src/core/math');
+    const w = new World(1, { heightAt: () => 0, surfaceAt: () => 'pasture' });
+    const p = w.addPlane(type, 'raf', 'T');
+    p.isPlayer = true;
+    w.player = p;
+    p.fs.setAirborne(new Vec3(0, 1500, 0), 0, speed, pitch);
+    let maxGamma = -1, stalled = false;
+    for (let i = 0; i < secs * 50; i++) {
+      w.step({ pitch: 0, roll: 0, yaw: 0, throttle, fire: false, boost: false, brake: false, pump: false });
+      maxGamma = Math.max(maxGamma, Math.asin(p.fs.vel.y / p.fs.vel.len()));
+      if (p.fs.stalled) stalled = true;
+    }
+    return { maxGamma, stalled, gamma: Math.asin(p.fs.vel.y / p.fs.vel.len()), ias: p.fs.ias };
+  }
+
+  it('let go in a 15° climb, it settles into a climb it can hold instead of rearing up into a stall', async () => {
+    for (const type of ['hurricane', 'spitfire', 'bf109'] as const) {
+      const r = await handsOff(type, 0.26, 85, 90);
+      expect(r.stalled).toBe(false);
+      expect(r.maxGamma).toBeLessThan(0.3);
+      expect(r.gamma).toBeGreaterThan(0.02);
+      expect(r.gamma).toBeLessThan(0.26);
+    }
+  });
+
+  it('let go in a dive, it eases out on its own', async () => {
+    const r = await handsOff('hurricane', -0.2, 120, 40, 0.75);
+    expect(r.gamma).toBeGreaterThan(-0.1);
+  });
+});

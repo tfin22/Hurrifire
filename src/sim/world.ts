@@ -232,6 +232,7 @@ export class World {
     if (!e) { e = this.makeEnv(p); this.envCache.set(p.id, e); }
     e.autoRudder = p.isPlayer ? this.autoRudder : true;
     e.stallGuard = p.isPlayer && this.stallGuard;
+    e.trimPath = p.isPlayer;
     e.arcade = p.isPlayer && this.arcade;
     e.wind = this.weather.wind;
     return e;
