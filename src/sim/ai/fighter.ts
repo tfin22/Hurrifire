@@ -16,6 +16,8 @@
 import { clamp, Vec3 } from '../../core/math';
 import { TUNING } from '../../tuning';
 import { leadPoint } from '../ballistics';
+import { stallSpeed } from '../../content/aircraft';
+import { hash01 } from '../../core/rng';
 import { controllable } from '../damage';
 import type { Plane } from '../plane';
 import { availableG, flyDirection, flyTo, headingAltitude, maxLevelTurn, rollTo, stickForG } from './pilot';
@@ -71,6 +73,25 @@ export function pullOutHeight(me: Plane): number {
   return roll + r * (1 - Math.sqrt(1 - sinDive * sinDive));
 }
 
+/** Wing loading (kg/m²): what decides who wins a slow turning fight. */
+const wingLoading = (p: Plane) => p.fs.mass / p.type.wingArea;
+
+/**
+ * How much better we turn than `t`, slow, where wings rather than the pilot's
+ * G limit decide it: above 1 we win a turning fight, below 1 we shouldn't
+ * get into one.
+ */
+export function turnEdge(me: Plane, t: Plane): number {
+  return wingLoading(t) / wingLoading(me);
+}
+
+/** Corner speed (m/s IAS): where our wing gives exactly the G we'll pull; any faster and the turn is no tighter. */
+export function cornerSpeed(me: Plane): number {
+  const t = me.type;
+  const clMax = (t.cl0 + t.clAlpha * t.alphaStall * 0.9) + me.fs.flaps * t.flapCl;
+  return Math.sqrt((me.skill.gLimit * me.fs.mass * 9.81) / (0.5 * 1.225 * t.wingArea * clMax));
+}
+
 export class FighterBrain implements Brain {
   state: FighterState = 'patrol';
   stateT = 0;
@@ -78,6 +99,10 @@ export class FighterBrain implements Brain {
   threatId = -1;
   /** Angle (rad) between the nose and the lead point on the last attacking step. */
   aimErr = Math.PI;
+  /** This dive's judgement of when to pull out (1 = right; -1 = not diving). */
+  private judge = -1;
+  /** Seconds spent attacking without the lead (stuck in lag). */
+  private lagT = 0;
   readonly contacts = new ContactMemory();
   private nextThink = 0;
   private nextSpot = 0;
@@ -133,8 +158,16 @@ export class FighterBrain implements Brain {
     }
     // Ground avoidance overrides everything. Fast and steep, a pull-out takes
     // a lot of height: start it while there's room for the turn it needs.
+    // Green pilots misjudge it, eyes on the target: each dive they judge
+    // afresh, and now and then they leave it too late.
     const agl = me.pos.y - ctx.groundAt(me.pos.x, me.pos.z);
-    if (me.fs.vel.y < -5 && agl < pullOutHeight(me) + TUNING.ai.groundAvoidAgl) {
+    if (me.fs.vel.y >= -5) this.judge = -1;
+    else if (this.judge < 0) {
+      const [lo, hi] = TUNING.ai.pullOutJudgement[me.skill.level] ?? [1, 1];
+      // Its own dice, so the rest of the fight's chances are left as they were.
+      this.judge = lo + (hi - lo) * hash01(me.id * 7919 + Math.floor(ctx.time * 10), 4231);
+    }
+    if (me.fs.vel.y < -5 && agl < (pullOutHeight(me) + TUNING.ai.groundAvoidAgl) * this.judge) {
       if (this.state !== 'bail') this.set('pullUp');
     }
     this.act(me, ctx);
@@ -206,8 +239,12 @@ export class FighterBrain implements Brain {
     if (!tgt || !this.contacts.knows(tgt.id)) this.targetId = this.pickTarget(me, ctx);
     if (this.targetId >= 0 && (this.state === 'patrol' || this.state === 'formation')) this.set('attack');
     if (this.targetId < 0 && (this.state === 'attack')) this.set(this.opts.leader ? 'formation' : 'patrol');
-    // Energy discipline: don't let the fight drag us slow.
-    if (this.state === 'attack' && me.skill.minSpeed > 0 && fs.ias < me.skill.minSpeed) {
+    // Energy discipline: don't let the fight drag us slow. Unless we're the
+    // better turner against another AI: slow is where we win, so only just above the stall.
+    const tgtNow = this.find(ctx, this.targetId);
+    const slowOk = !!tgtNow && !tgtNow.isPlayer && turnEdge(me, tgtNow) > TUNING.ai.turnEdge;
+    const minSpeed = slowOk ? Math.min(me.skill.minSpeed, stallSpeed(me.type, fs.mass, 1.225, 0) * TUNING.ai.turnFightStall) : me.skill.minSpeed;
+    if (this.state === 'attack' && minSpeed > 0 && fs.ias < minSpeed) {
       const t = this.find(ctx, this.targetId);
       const g = t ? threatGeometry(me, t) : null;
       if (!g || g.aimErr > 0.35 || g.range > 500) {
@@ -408,10 +445,15 @@ export class FighterBrain implements Brain {
     const sk = me.skill;
     const muzzle = me.armament.guns[0]?.type.muzzle ?? 750;
     const range = t.pos.distTo(fs.pos);
-    // Aim with a little skill-dependent wander.
+    // Aim with a little skill-dependent wander. Against another AI it grows
+    // with the closing speed: a head-on pass at 500 mph gives a second's
+    // snap judgement, not a careful aim.
     if (ctx.time >= this.jitterT) {
       this.jitterT = ctx.time + 0.8;
-      const e = (1 - sk.aim) * 7 * (sk.wander ?? 1);
+      const los = t.pos.clone().sub(fs.pos).normalize();
+      const closing = fs.vel.clone().sub(t.fs.vel).dot(los);
+      const k = t.isPlayer ? 1 : 1 + Math.max(0, closing - TUNING.ai.closureEasy) / TUNING.ai.closureHard;
+      const e = (1 - sk.aim) * 7 * (sk.wander ?? 1) * k;
       this.aimJitter.set(ctx.rng.gauss() * e, ctx.rng.gauss() * e, ctx.rng.gauss() * e);
     }
     const lead = range < 1200 ? leadPoint(fs.pos, fs.vel, t.pos, t.fs.vel, muzzle).add(this.aimJitter) : t.pos.clone();
@@ -438,6 +480,22 @@ export class FighterBrain implements Brain {
     // Against the player it stays as playtested.
     if (!t.isPlayer) tol = Math.max(tol, (TUNING.ai.snapDeg[sk.level] * Math.PI) / 180);
     if (range < sk.fireRange && err < tol) me.trigger = true;
+    // Against another AI, fly the fight your aircraft wins.
+    if (!t.isPlayer) {
+      const edge = turnEdge(me, t);
+      if (err > 0.1) this.lagT += ctx.dt; else this.lagT = 0;
+      // The better turner, stuck in lag: throttle back towards corner speed and
+      // keep pulling. Slow, the lighter wing turns inside and the lead comes.
+      if (edge > TUNING.ai.turnEdge && this.lagT > 3 && fs.ias > cornerSpeed(me) * 0.95) c.throttle = TUNING.ai.turnFightThrottle;
+      // The worse turner won't be drawn into it: no shot after a few seconds, dive away and come again.
+      if (edge < 1 / TUNING.ai.turnEdge && this.lagT > TUNING.ai.refuseTurnAfter && err > 0.35) {
+        this.lagT = 0;
+        this.extendDir = fs.forward().clone();
+        this.extendDir.y = -0.3;
+        this.set('extend');
+        return;
+      }
+    }
     // Boom and zoom: a disciplined 109 that's above won't hang about in a turning fight.
     if (me.type.id === 'bf109' && sk.aggression < 0.5 && this.stateT > 12 && err > 0.6) {
       this.extendDir = fs.forward().clone();

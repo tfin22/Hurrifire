@@ -165,8 +165,21 @@ export const TUNING = {
     groundAvoidAgl: 280,
     /** AI against AI: how hard an attacker pulls for the lead (x the usual 6 G per radian of aim error). Pull hard or sit in lag. */
     attackGain: 3,
+    /** AI against AI: a wing-loading ratio beyond this makes one the better turner (and the other the worse). */
+    turnEdge: 1.1,
+    /** The better turner, stuck in lag: throttle back to this to slow towards corner speed. */
+    turnFightThrottle: 0.45,
+    /** ...and it will fight down to this times its stall speed before running. */
+    turnFightStall: 1.25,
+    /** The worse turner gives up a turning fight after this long without the lead (s). */
+    refuseTurnAfter: 5,
+    /** AI against AI: aim wander grows by 1 for every this many m/s of closing speed above `closureEasy` (head-on passes are hard). */
+    closureEasy: 50,
+    closureHard: 80,
     /** AI against AI: fire inside this aim error (deg) as well as when the lead sits inside a wingspan. */
     snapDeg: { green: 4, average: 2.5, experte: 2 } as Record<string, number>,
+    /** How well a pilot judges when to start a pull-out, drawn afresh each dive (1 = right): green pilots sometimes leave it too late. */
+    pullOutJudgement: { green: [0.45, 1.05], average: [1, 1.1], experte: [1, 1] } as Record<string, readonly [number, number]>,
     /** How fast (rad/s) a pilot can roll the wings level to pull out of a dive, slow and fast (ailerons stiffen with speed). */
     recoveryRollRate: [1.8, 0.45] as const,
     /** ...between these airspeeds (m/s IAS). */

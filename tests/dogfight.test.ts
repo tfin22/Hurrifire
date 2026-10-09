@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { Quat, Vec3 } from '../src/core/math';
-import { FighterBrain, pullOutHeight } from '../src/sim/ai/fighter';
+import { cornerSpeed, FighterBrain, pullOutHeight, turnEdge } from '../src/sim/ai/fighter';
 import { skillFor, SkillLevel } from '../src/sim/ai/types';
 import { World } from '../src/sim/world';
 
@@ -52,6 +52,37 @@ describe('AI against AI', () => {
         for (const p of [a, b]) if (!p.alive) expect(p.damage.hits).toBeGreaterThan(0);
       }
     }
+  }, 120000);
+});
+
+describe('who turns better, and fights accordingly', () => {
+  it('the Spitfire and Hurricane out-turn the 109 slow: lighter on the wing, lower corner speed', () => {
+    const w = new World(1, flat);
+    const spit = w.addPlane('spitfire', 'raf', 'S'), hurri = w.addPlane('hurricane', 'raf', 'H'), bf = w.addPlane('bf109', 'lw', 'B');
+    for (const p of [spit, hurri, bf]) p.skill = skillFor('average');
+    expect(turnEdge(spit, bf)).toBeGreaterThan(1.1);
+    expect(turnEdge(hurri, bf)).toBeGreaterThan(1.1);
+    expect(turnEdge(bf, spit)).toBeLessThan(1 / 1.1);
+    expect(cornerSpeed(spit)).toBeLessThan(cornerSpeed(bf));
+  });
+
+  it('side by side, at the same height and speed, the Spitfire wins the turning fight more often than the 109', () => {
+    let spit = 0, bf = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const w = new World(seed, flat);
+      w.sun.set(0, 1, 0);
+      const a = w.addPlane('spitfire', 'raf', 'S'), b = w.addPlane('bf109', 'lw', 'B');
+      a.skill = skillFor('average');
+      b.skill = skillFor('average');
+      a.fs.setAirborne(new Vec3(0, 4000, 0), 0, 120);
+      b.fs.setAirborne(new Vec3(800, 4000, 0), 0, 120);
+      a.brain = new FighterBrain({});
+      b.brain = new FighterBrain({});
+      for (let i = 0; i < 240 * 50 && a.alive && b.alive; i++) w.step(null);
+      if (!b.alive) spit++;
+      if (!a.alive) bf++;
+    }
+    expect(spit).toBeGreaterThan(bf);
   }, 120000);
 });
 
