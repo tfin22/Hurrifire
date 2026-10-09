@@ -83,6 +83,9 @@ export const TUNING = {
     seizeTemp: 140,
     /** Sliding on the belly (or as a wreck): this much friction, plus the surface's rolling friction. */
     slideFriction: 0.45,
+    /** A heavy elevator (the 109) held full back at speed: trim wound in per second (0..1), and how much of the lost G it gives back. */
+    trimRate: 0.3,
+    trimGain: 0.6,
     brakeFriction: 0.3,
     sideFriction: 0.8,
     groundRudder: 0.6,
@@ -163,6 +166,37 @@ export const TUNING = {
     /** 109s break off for France at this fuel fraction (they have little time over England). */
     bingoFuel109: 0.42,
     groundAvoidAgl: 280,
+    /** AI against AI: how hard an attacker pulls for the lead (x the usual 6 G per radian of aim error). Pull hard or sit in lag. */
+    attackGain: 3,
+    /** AI against AI: a wing-loading ratio beyond this makes one the better turner (and the other the worse). */
+    turnEdge: 1.1,
+    /** The better turner, stuck in lag: throttle back to this to slow towards corner speed. */
+    turnFightThrottle: 0.45,
+    /** ...and it will fight down to this times its stall speed before running. */
+    turnFightStall: 1.25,
+    /** The worse turner gives up a turning fight after this long without the lead (s). */
+    refuseTurnAfter: 5,
+    /** AI against AI: aim wander grows by 1 for every this many m/s of closing speed above `closureEasy` (head-on passes are hard). */
+    closureEasy: 50,
+    closureHard: 80,
+    /** AI against AI: fire inside this aim error (deg) as well as when the lead sits inside a wingspan. */
+    snapDeg: { green: 4, average: 2.5, experte: 2 } as Record<string, number>,
+    /** How well a pilot judges when to start a pull-out, drawn afresh each dive (1 = right): green pilots sometimes leave it too late. */
+    pullOutJudgement: { green: [0.45, 1.05], average: [1, 1.1], experte: [1, 1] } as Record<string, readonly [number, number]>,
+    /** An out-turned 109 pushes over and dives away down to this airspeed (m/s IAS), not just when fast. */
+    buntMinIasOutTurned: 60,
+    /** Having dived away, a fighter this close to its bingo fuel (fraction) goes home rather than coming back. */
+    goHomeMargin: 0.08,
+    /** A Spitfire or Hurricane with a 109 (heavy elevator) behind: the chance it dives for the deck rather than breaking, between these heights (m). */
+    diveOutChance: 0.4,
+    /** ...only with him still out of gun range (m): from close behind, a straight dive is just a better target. */
+    diveOutMinRange: 700,
+    diveOutMinAgl: 1200,
+    diveOutMaxAgl: 6000,
+    /** How fast (rad/s) a pilot can roll the wings level to pull out of a dive, slow and fast (ailerons stiffen with speed). */
+    recoveryRollRate: [1.8, 0.45] as const,
+    /** ...between these airspeeds (m/s IAS). */
+    recoveryRollIas: [100, 250] as const,
     extendSeconds: 6,
     zoomSeconds: 6,
     buntSeconds: 1.3,

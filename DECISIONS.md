@@ -837,3 +837,219 @@ options."
     when you left it": "You broke off out of ammunition, having shot down
     5 of it; the raid went on to Kenley."
   - Under YOU, the report and any Mayday get their own lines.
+
+## AI fighters that fight
+
+Backlog item 3, found while measuring the difficulty setting: two AI
+fighters set on each other circled for minutes and rarely fired. That's
+your wingmen against the escort, and other squadrons against 109s. A probe
+of eight three-minute Spitfire–109 duels at average skill gave 240 rounds
+fired in total, no hits, and two "kills". Those two were 109s flying into
+the ground. Three faults:
+
+- **Too gentle a pull.** The AI asks for G in proportion to its aim error,
+  at 6 G per radian. Fifteen degrees behind the lead asks for about 1.6 G,
+  when closing it needs everything the aircraft has. In range and
+  attacking, the average Spitfire's aim error was over 10° in 93% of
+  samples: it sat in lag for ever. Against another AI, an attacker now
+  pulls three times as hard for the lead (`ai.attackGain`).
+- **Too strict a trigger.** The AI only fired with the lead inside the
+  target's wingspan, about 1.5° at 200 m, which a turning fight almost
+  never offers. Against another AI it now also takes snap shots inside 4°
+  (green), 2.5° (average) or 2° (experte) (`ai.snapDeg`).
+- **Pull-outs started too late.** Ground avoidance began five seconds
+  from impact. At 250 m/s a pull-out needs about 1,800 m, and upside down
+  it first needs a roll the ailerons make slow at that speed (about
+  0.5 rad/s). Now it begins from the height the recovery actually needs:
+  - the time to roll level (the roll rate falls with speed), times the
+    sink rate;
+  - plus the turn radius at the G the pilot will pull, with a quarter
+    again for the speed gained;
+  - times how steep the dive is.
+
+  The recovery itself now steers for a point just above the horizon along
+  its track. That rolls the lift up and pulls from any attitude. Before,
+  it only pulled once the wings were already near level, so steeply
+  inverted it pushed instead.
+
+After: the same eight duels at average give 728 rounds, 139 hits and eight
+winners (Spitfire 3, 109 5). Experten fight decisively too, the 109s
+usually winning on dive-and-zoom and cannon. No aircraft goes down
+unhit.
+
+**Against you, nothing changes.** The harder pull and the snap shots
+apply only when the target is another AI. The balance you've been
+playtesting (enemies bouncing you, and the difficulty levels) was tuned
+against the old steering and trigger. The difficulty probe gives the same
+times to the second: 43 s at flight school, 42 s at normal, 46 s for Spain
+veterans. The pull-out fix applies to everyone; enemies no longer fly
+into the ground, so they no longer hand you free "kills" either.
+
+### Who turns better, and fighting like it
+
+Playtest: "Is the 109 winning 5 of 8 realistic? Couldn't Spits and
+Hurricanes just out-turn them, on the verge of a stall?"
+
+Not realistic. The flight model was already right: sustained level turns
+at 1,500 m take 15.5 s in the Spitfire, 13.3 s in the Hurricane and
+22.2 s in the 109, close to the 1940 comparative trials. The 109 carries
+about 157 kg on each square metre of wing, against 117 for the Spitfire
+and 125 for the Hurricane. The AI flew it wrong, in three ways:
+
+- **Every turning fight stayed fast.** At 90–140 m/s both aircraft are
+  limited by the pilot's G (5.8 g at average), not the wing, so both turn
+  at exactly the same rate. The Spitfire sat 120 m behind for 20 seconds,
+  its aim error growing from 10° to 24°. Its edge is only in the slow,
+  lift-limited regime, "on the verge of a stall", but the AI stayed at
+  full throttle in a descending spiral. And the energy-discipline rule (no
+  slower than 72 m/s for an average pilot) made it run from exactly the
+  speeds where it wins.
+- **The 109 stayed in turning fights it should refuse.**
+- **Head-on passes decided most fights**, with far too many hits for a
+  one-second window at 500 mph. The 109's cannon gave it the better of
+  them.
+
+Against another AI now:
+- **The better turner** (wing loading at least 10% lower) that's been in
+  lag for 3 s throttles back towards its corner speed and keeps pulling.
+  It will fight down to 1.25× its stall speed before running.
+- **The worse turner** without the lead after 5 s dives away and comes
+  again (the Luftwaffe's boom-and-zoom).
+- **Aim wander grows with closing speed**: unchanged in a tail chase, about
+  three times worse in a head-on.
+
+Fair-start duels (16 each, side by side or crossing at 90°, four minutes):
+
+| Start | Pairing | Before (RAF–109) | After |
+|---|---|---|---|
+| Side by side | Spitfire, average | 3–5 | 7–1 |
+| Side by side | Spitfire, experte | 2–9 | 2–0 |
+| Side by side | Hurricane, average | 3–7 | 1–2 |
+| Side by side | Hurricane, experte | 0–4 | 7–0 |
+| Crossing | Spitfire, average | 5–10 | 7–5 |
+| Crossing | Hurricane, average | 3–9 | 8–3 |
+| Crossing | Spitfire, experte | 0–10 | 0–7 |
+| Crossing | Hurricane, experte | 0–3 | 0–4 |
+
+The rest of the 16 in each case were undecided: one side disengaged.
+
+What's left: experten meeting head-on. The 109 pilot presses the pass in
+to about 160 m while the RAF pilot breaks, and the cannon win it.
+Defensible (a head-on with 20 mm was a bad trade for eight .303s), so it
+stays.
+
+**Pilots still fly into the ground.** Damaged, wounded, blacked-out or
+spinning aircraft always could. Healthy ones no longer do through bad
+arithmetic. Green pilots now judge each dive's pull-out afresh, from 45%
+to 105% of the height they need, so now and then one leaves it too late:
+about 1 in 40 in a steep inverted dive from 2,000 m. Average pilots range
+from right to slightly early; experten always judge it right. The
+judgement uses its own dice (a hash), so it doesn't reshuffle the rest of
+the fight's chances.
+
+As before, **against you nothing changes**. The probe of a 109 bouncing a
+Spitfire you're flying gives the same times to the second.
+
+### The 109's heavy elevator
+
+Playtest: "The Messerschmitt's elevator control was very heavy at high
+speed... Spitfire pilots would escape from 109s by diving towards the
+ground and pulling up at the last moment... In extreme fast dives the
+Messerschmitt's heavy elevator meant the aircraft itself was the limiting
+factor."
+
+Not modelled until now: every aircraft's full back stick gave its full G
+at any speed.
+
+- **The elevator stiffens with speed (109E).** Above 120 m/s IAS (about
+  270 mph), the G a pilot can pull with full strength falls: 5.4 g at
+  335 mph, about 4 g at 400 and 3.4 g at 450, down to 2.5 g at its
+  maximum diving speed. That's in line with the RAE trials of a captured
+  109E. Partial stick scales the same way. Spitfire and Hurricane keep
+  their full 7.5 g at any speed, so the pilot blacks out first. The data
+  is per aircraft (`elevatorHeavyV`, `elevatorHeavyEndV`,
+  `elevatorHeavyG`), and Arcade leaves it out.
+- **Trim.** Held hard back at speed, the pilot winds in nose-up trim and
+  slowly wins back G: 0.3 of full trim a second, giving back up to 60% of
+  what the heavy elevator took. This applies to you too when flying the
+  109.
+- **The AI knows its aircraft.**
+  - Its pull-out height uses the G the elevator allows at the speed it
+    will reach.
+  - A 109's push-over-and-dive escape ends once the pull-out it would
+    need is more than half its height.
+  - A green 109 following a Spitfire down still misjudges it now and
+    then.
+- **The Spitfire's escape.** With a 109 behind but still out of gun
+  range (over 700 m), and between 1,200 m and 6,000 m up, an AI Spitfire
+  or Hurricane (not green) dives for the deck 40% of the time rather than
+  breaking. Closer than that, a straight dive is just a better target:
+  all 16 were shot down when we tried it from 450 m, so it breaks into a
+  turn instead.
+
+Measured, with a 109 a kilometre behind a Spitfire at 3,000 m, over 16
+runs:
+- **Against average 109s:** the Spitfire is never hit. It goes down to
+  about 850 m, and the 109s break off at about 900 m.
+- **Against green 109s:** the Spitfire goes down to about 325 m, and 4 of
+  16 green 109s follow it into the ground.
+
+The even-start duels now run (RAF–109, of 16 each):
+- **Side by side:** Spitfire average 5–0, experte 3–0; Hurricane average
+  3–2, experte 3–0.
+- **Crossing:** Spitfire average 8–4; Hurricane average 8–3.
+- **Crossing, both experten:** still go to the 109's cannon head-on (0–7
+  and 0–4).
+
+No unforced crashes. A 109 caught inverted in a steep dive at 400 mph now
+needs about 3,000 m to recover, where a Spitfire needs 2,000.
+
+**Your fights change a little.** This is the flight model, not AI tactics,
+so it applies to enemy 109s diving on you as well. In the probe of a 109
+bouncing you: normal is identical, and at flight school and Spain
+veterans one more pass in twelve fails to get you.
+
+### Rebalanced: chaos, and the 109 diving away
+
+Playtest: "Maybe it went a bit too much the RAF way now? The 109 can
+generally dive away. Can you simulate 3 v 3? The kills were in chaos. A
+single 109 against a Hurricane or Spitfire was usually stalemate, decided
+on fuel?"
+
+Measured with real fuel states: RAF fighters at 90% over home, 109s at
+62% as they arrive over England and turning for home at 42%. Ten-minute
+fights, 12 of each.
+
+- **One-on-ones** mostly came out as suggested. From crossing courses,
+  half had no kill: the 109 dived away, ran low on fuel or the two lost
+  each other, and the kills that did happen were about even.
+- **Side by side** the RAF won 0–5, and in three-a-side 5–19. The cause:
+  out-turned, the 109's dive-away only worked above 95 m/s, and a slow
+  turning fight is exactly where it isn't. So it tried to out-turn a
+  Spitfire.
+
+Changes:
+- **Out-turned, a 109 pushes over and dives away down to 60 m/s**, not
+  just when fast. The Merlin behind it cuts out under the negative G.
+  Only from an attacker behind: hit head-on, it breaks sideways, because
+  pushing over straight ahead keeps it in the Spitfire's sights.
+- **Having dived away, a fighter within 8% of its bingo fuel goes home**
+  rather than coming back for more.
+
+Three against three, mixed skills (green to experte), 12 fights each:
+
+| Start | RAF lost | 109s lost | 109s went home / dived away |
+|---|---|---|---|
+| Spitfires, crossing courses | 13 | 14 | 19 |
+| Hurricanes, crossing courses | 11 | 13 | 27 |
+| Spitfires, 109s 1,000 m above | 13 | 15 | 20 |
+| Hurricanes, 109s 1,000 m above | 8 | 12 | 20 |
+| Spitfires, side by side, level | 4 | 19 | 20 |
+
+Chaotic and roughly even. The exception is a level, side-by-side start at
+the same speed: the 109's worst case and the Spitfire's best, a straight
+turning fight. Historically the 109 pilot avoided that by fighting from
+above; in the game's raids, the escort flies 600–2,000 m above the
+bombers.
+
+The probe of a 109 bouncing you is unchanged from the previous change.

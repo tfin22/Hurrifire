@@ -18,7 +18,7 @@
 
 import { airDensity, clamp, G, Quat, Vec3 } from '../core/math';
 import { Rng } from '../core/rng';
-import { AircraftType, massOf, stallSpeed } from '../content/aircraft';
+import { AircraftType, elevatorG, massOf, stallSpeed } from '../content/aircraft';
 import { TUNING } from '../tuning';
 
 export interface FlightControls {
@@ -150,6 +150,8 @@ export class FlightState {
   vs = 0;
   stalled = false;
   buffet = 0;
+  /** Nose-up trim wound in to help a heavy elevator (0..1): full back stick at speed gradually wins back G. */
+  trim = 0;
   spin = 0;
   spinDir = 1;
   heading = 0;
@@ -242,9 +244,9 @@ function clOf(t: AircraftType, alpha: number, flaps: number, liftMul: number): n
  * most of the forward travel; only the last part goes negative, so easing
  * into a dive doesn't cut the Merlin, but a hard bunt does.
  */
-export function commandedG(t: AircraftType, pitchIn: number): number {
+export function commandedG(t: AircraftType, pitchIn: number, gMax = t.maxG): number {
   const T = TUNING.flight;
-  if (pitchIn >= 0) return 1 + Math.pow(pitchIn, T.pullCurve) * (t.maxG - 1);
+  if (pitchIn >= 0) return 1 + Math.pow(pitchIn, T.pullCurve) * (gMax - 1);
   const x = -pitchIn, P = T.pushToZeroG;
   if (x <= P) return 1 - Math.pow(x / P, 1.3);
   return ((x - P) / (1 - P)) * t.minG;
@@ -364,7 +366,13 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   }
   // Pitch: stick → load factor → angle of attack.
   const pitchIn = clamp(c.pitch + mods.elevatorBias, -1, 1);
-  const gCmd = commandedG(t, pitchIn);
+  // Full back stick pulls what the pilot's arm can manage: on a heavy elevator
+  // at speed, less than the airframe could take. Held there, the pilot winds
+  // in nose-up trim, and slowly gets more.
+  const eg = elevatorG(t, s.ias);
+  if (eg < t.maxG && pitchIn > 0.8) s.trim = Math.min(1, s.trim + dt * T.trimRate);
+  else s.trim = Math.max(0, s.trim - dt * T.trimRate * 2);
+  const gCmd = commandedG(t, pitchIn, env.arcade ? t.maxG : eg + s.trim * (t.maxG - eg) * T.trimGain);
   const clReq = (gCmd * m * G) / Math.max(qbar * S * mods.liftMul, 1);
   let alphaReq = (clReq - t.cl0 - s.flaps * t.flapCl) / t.clAlpha;
   const asEff = t.alphaStall - s.flaps * 0.03;

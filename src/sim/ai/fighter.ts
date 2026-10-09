@@ -16,13 +16,15 @@
 import { clamp, Vec3 } from '../../core/math';
 import { TUNING } from '../../tuning';
 import { leadPoint } from '../ballistics';
+import { elevatorG, stallSpeed } from '../../content/aircraft';
+import { hash01 } from '../../core/rng';
 import { controllable } from '../damage';
 import type { Plane } from '../plane';
 import { availableG, flyDirection, flyTo, headingAltitude, maxLevelTurn, rollTo, stickForG } from './pilot';
 import { ContactMemory, threatGeometry } from './spotting';
 import type { AIContext, Brain } from './types';
 
-export type FighterState = 'circle' | 'patrol' | 'formation' | 'attack' | 'extend' | 'zoom' | 'evade' | 'bunt' | 'rtb' | 'bail' | 'glide' | 'pullUp';
+export type FighterState = 'circle' | 'patrol' | 'formation' | 'attack' | 'extend' | 'zoom' | 'evade' | 'bunt' | 'diveOut' | 'rtb' | 'bail' | 'glide' | 'pullUp';
 
 export interface FighterOpts {
   /** Patrol waypoint and height. */
@@ -53,11 +55,55 @@ export interface DefensiveCircle {
   lastThreat: number;
 }
 
+/**
+ * Height (m) a pull-out from the present dive needs: first rolling the
+ * wings level (upside down, that's most of a second and a half of falling),
+ * then the turn at the G we can pull, with room for the speed it gathers.
+ */
+export function pullOutHeight(me: Plane): number {
+  const fs = me.fs;
+  const v = Math.max(1, fs.vel.len());
+  const sink = Math.max(0, -fs.vel.y);
+  // What we can actually pull: the wing, our G limit, and (in a 109) the elevator at the speed we'll be doing.
+  const n = Math.max(1.5, Math.min(availableG(fs, 0.85), me.skill.gLimit, elevatorG(me.type, fs.ias * 1.1)));
+  const r = (v * v * 1.25) / (9.81 * (n - 1));
+  const sinDive = Math.min(1, sink / v);
+  const A = TUNING.ai, k = clamp((fs.ias - A.recoveryRollIas[0]) / (A.recoveryRollIas[1] - A.recoveryRollIas[0]), 0, 1);
+  const rate = A.recoveryRollRate[0] + (A.recoveryRollRate[1] - A.recoveryRollRate[0]) * k;
+  const roll = (Math.abs(fs.roll) / rate) * sink;
+  return roll + r * (1 - Math.sqrt(1 - sinDive * sinDive));
+}
+
+/** Wing loading (kg/m²): what decides who wins a slow turning fight. */
+const wingLoading = (p: Plane) => p.fs.mass / p.type.wingArea;
+
+/**
+ * How much better we turn than `t`, slow, where wings rather than the pilot's
+ * G limit decide it: above 1 we win a turning fight, below 1 we shouldn't
+ * get into one.
+ */
+export function turnEdge(me: Plane, t: Plane): number {
+  return wingLoading(t) / wingLoading(me);
+}
+
+/** Corner speed (m/s IAS): where our wing gives exactly the G we'll pull; any faster and the turn is no tighter. */
+export function cornerSpeed(me: Plane): number {
+  const t = me.type;
+  const clMax = (t.cl0 + t.clAlpha * t.alphaStall * 0.9) + me.fs.flaps * t.flapCl;
+  return Math.sqrt((me.skill.gLimit * me.fs.mass * 9.81) / (0.5 * 1.225 * t.wingArea * clMax));
+}
+
 export class FighterBrain implements Brain {
   state: FighterState = 'patrol';
   stateT = 0;
   targetId = -1;
   threatId = -1;
+  /** Angle (rad) between the nose and the lead point on the last attacking step. */
+  aimErr = Math.PI;
+  /** This dive's judgement of when to pull out (1 = right; -1 = not diving). */
+  private judge = -1;
+  /** Seconds spent attacking without the lead (stuck in lag). */
+  private lagT = 0;
   readonly contacts = new ContactMemory();
   private nextThink = 0;
   private nextSpot = 0;
@@ -83,7 +129,7 @@ export class FighterBrain implements Brain {
 
   onHit(me: Plane, shooterId: number, ctx: AIContext): void {
     this.contacts.tell(shooterId, ctx.time);
-    if (this.state !== 'bail' && this.state !== 'rtb' && this.state !== 'evade' && this.state !== 'bunt') {
+    if (this.state !== 'bail' && this.state !== 'rtb' && this.state !== 'evade' && this.state !== 'bunt' && this.state !== 'diveOut') {
       this.threatId = shooterId;
       this.decideEvasion(me, ctx);
     }
@@ -111,10 +157,18 @@ export class FighterBrain implements Brain {
       this.nextThink = ctx.time + me.skill.think;
       this.think(me, ctx);
     }
-    // Ground avoidance overrides everything.
+    // Ground avoidance overrides everything. Fast and steep, a pull-out takes
+    // a lot of height: start it while there's room for the turn it needs.
+    // Green pilots misjudge it, eyes on the target: each dive they judge
+    // afresh, and now and then they leave it too late.
     const agl = me.pos.y - ctx.groundAt(me.pos.x, me.pos.z);
-    const sinkTime = me.fs.vel.y < -1 ? agl / -me.fs.vel.y : 99;
-    if ((agl < TUNING.ai.groundAvoidAgl && me.fs.vel.y < -5) || sinkTime < 5) {
+    if (me.fs.vel.y >= -5) this.judge = -1;
+    else if (this.judge < 0) {
+      const [lo, hi] = TUNING.ai.pullOutJudgement[me.skill.level] ?? [1, 1];
+      // Its own dice, so the rest of the fight's chances are left as they were.
+      this.judge = lo + (hi - lo) * hash01(me.id * 7919 + Math.floor(ctx.time * 10), 4231);
+    }
+    if (me.fs.vel.y < -5 && agl < (pullOutHeight(me) + TUNING.ai.groundAvoidAgl) * this.judge) {
       if (this.state !== 'bail') this.set('pullUp');
     }
     this.act(me, ctx);
@@ -163,9 +217,14 @@ export class FighterBrain implements Brain {
         threat = t; threatRange = g.range;
       }
     }
-    if (threat && this.state !== 'evade' && this.state !== 'bunt' && this.state !== 'pullUp') {
+    if (threat && this.state !== 'evade' && this.state !== 'bunt' && this.state !== 'diveOut' && this.state !== 'pullUp') {
       this.threatId = threat.id;
       this.decideEvasion(me, ctx);
+      return;
+    }
+    // Diving for the deck: keep going until the pull-out (ground avoidance takes over), or he's gone.
+    if (this.state === 'diveOut') {
+      if (!threat && this.stateT > 8) { this.threatId = -1; this.set('extend'); }
       return;
     }
     if (this.state === 'evade' || this.state === 'bunt') {
@@ -186,8 +245,12 @@ export class FighterBrain implements Brain {
     if (!tgt || !this.contacts.knows(tgt.id)) this.targetId = this.pickTarget(me, ctx);
     if (this.targetId >= 0 && (this.state === 'patrol' || this.state === 'formation')) this.set('attack');
     if (this.targetId < 0 && (this.state === 'attack')) this.set(this.opts.leader ? 'formation' : 'patrol');
-    // Energy discipline: don't let the fight drag us slow.
-    if (this.state === 'attack' && me.skill.minSpeed > 0 && fs.ias < me.skill.minSpeed) {
+    // Energy discipline: don't let the fight drag us slow. Unless we're the
+    // better turner against another AI: slow is where we win, so only just above the stall.
+    const tgtNow = this.find(ctx, this.targetId);
+    const slowOk = !!tgtNow && !tgtNow.isPlayer && turnEdge(me, tgtNow) > TUNING.ai.turnEdge;
+    const minSpeed = slowOk ? Math.min(me.skill.minSpeed, stallSpeed(me.type, fs.mass, 1.225, 0) * TUNING.ai.turnFightStall) : me.skill.minSpeed;
+    if (this.state === 'attack' && minSpeed > 0 && fs.ias < minSpeed) {
       const t = this.find(ctx, this.targetId);
       const g = t ? threatGeometry(me, t) : null;
       if (!g || g.aimErr > 0.35 || g.range > 500) {
@@ -199,16 +262,37 @@ export class FighterBrain implements Brain {
     if (this.state === 'extend' && (this.stateT > TUNING.ai.extendSeconds || fs.ias > me.skill.minSpeed + 45)) {
       this.set(me.type.id === 'bf109' ? 'zoom' : 'attack');
     }
-    if (this.state === 'zoom' && (this.stateT > TUNING.ai.zoomSeconds || fs.ias < me.skill.minSpeed + 15)) this.set('attack');
+    if (this.state === 'zoom' && (this.stateT > TUNING.ai.zoomSeconds || fs.ias < me.skill.minSpeed + 15)) {
+      // Clear of the fight, and fuel getting short: that's enough for today.
+      const bingo = this.opts.bingo ?? (me.type.id === 'bf109' ? TUNING.ai.bingoFuel109 : 0.2);
+      if (fs.fuel < me.type.fuelCapacity * (bingo + TUNING.ai.goHomeMargin)) { this.set('rtb'); this.targetId = -1; }
+      else this.set('attack');
+    }
   }
 
   private decideEvasion(me: Plane, ctx: AIContext): void {
     const fs = me.fs;
     const t = this.find(ctx, this.threatId);
-    const canBunt = me.type.fuelInjected && fs.pos.y > 1500 && fs.ias > 95 && me.skill.level !== 'green';
+    // Out-turned (a Spitfire or Hurricane behind, inside our turn), a 109 doesn't
+    // try to turn with it: push over and dive away, even slow. The pursuer's
+    // carburettor cuts out under the negative G.
+    // (Only from behind: shot at head-on, pushing over straight ahead just keeps you in his sights.)
+    const behind = !!t && fs.forward().dot(t.pos.clone().sub(fs.pos)) < 0;
+    const outTurned = behind && turnEdge(me, t!) < 1 / TUNING.ai.turnEdge;
+    const canBunt = me.type.fuelInjected && fs.pos.y > 1500 && fs.ias > (outTurned ? TUNING.ai.buntMinIasOutTurned : 95) && me.skill.level !== 'green';
     const pursuerCarb = t ? !t.type.fuelInjected : false;
-    if (canBunt && (pursuerCarb || ctx.rng.chance(0.4))) {
+    if (canBunt && (!t || behind) && (pursuerCarb || outTurned || ctx.rng.chance(0.4))) {
       this.set('bunt');
+      return;
+    }
+    // A light elevator against a heavy one (a Spitfire with a 109 behind): dive
+    // for the deck and pull out late. He can't pull as hard at that speed and
+    // has to break off far higher, or fly in.
+    const agl = fs.pos.y - ctx.groundAt(fs.pos.x, fs.pos.z);
+    const heavierBehind = !!t && !!t.type.elevatorHeavyV && !me.type.elevatorHeavyV;
+    const A = TUNING.ai;
+    if (heavierBehind && me.skill.level !== 'green' && agl > A.diveOutMinAgl && agl < A.diveOutMaxAgl && t!.pos.distTo(fs.pos) > A.diveOutMinRange && ctx.rng.chance(A.diveOutChance)) {
+      this.set('diveOut');
       return;
     }
     if (t) {
@@ -270,9 +354,15 @@ export class FighterBrain implements Brain {
     c.yaw = 0;
     switch (this.state) {
       case 'pullUp': {
-        c.roll = rollTo(fs, 0, 3);
-        c.pitch = Math.abs(fs.roll) < 1.2 ? stickForG(me.type, Math.min(gLim, 4.5)) : 0;
-        c.throttle = 1;
+        // Aim a little above the horizon along our track: from any attitude,
+        // inverted or vertical, that rolls the lift up and pulls.
+        const dir = fs.vel.clone();
+        dir.y = 0;
+        if (dir.lenSq() < 1) { dir.copy(fs.forward()); dir.y = 0; }
+        dir.normalize();
+        dir.y = 0.25;
+        flyDirection(fs, dir, c, Math.min(gLim + 0.5, 6));
+        c.throttle = fs.vel.y < -60 ? 0.3 : 1;
         if (fs.vel.y > 2 && fs.pos.y - ctx.groundAt(fs.pos.x, fs.pos.z) > TUNING.ai.groundAvoidAgl) this.set(this.targetId >= 0 ? 'attack' : this.opts.leader ? 'formation' : 'patrol');
         break;
       }
@@ -326,6 +416,17 @@ export class FighterBrain implements Brain {
         }
         break;
       }
+      case 'diveOut': {
+        // Nose well down, full power, wings level along our track; the pull-out comes from ground avoidance.
+        const dir = fs.forward().clone();
+        dir.y = 0;
+        if (dir.lenSq() < 1e-4) dir.set(Math.sin(fs.heading), 0, Math.cos(fs.heading));
+        dir.normalize();
+        dir.y = -1.4;
+        flyDirection(fs, dir, c, Math.min(gLim, 4));
+        c.throttle = 1;
+        break;
+      }
       case 'bunt': {
         // Push over hard (negative G), then dive away at full power.
         if (this.stateT < TUNING.ai.buntSeconds) {
@@ -335,7 +436,9 @@ export class FighterBrain implements Brain {
           const dir = fs.forward().clone();
           dir.y = -1.2;
           flyDirection(fs, dir, c, 3);
-          if (fs.pos.y - ctx.groundAt(fs.pos.x, fs.pos.z) < 900) this.set('zoom');
+          // Not into a dive we couldn't pull out of (a 109's elevator stiffens with speed).
+          const agl = fs.pos.y - ctx.groundAt(fs.pos.x, fs.pos.z);
+          if (agl < 900 || pullOutHeight(me) > agl * 0.5) this.set('zoom');
         }
         c.throttle = 1;
         if (this.stateT > TUNING.ai.buntSeconds + TUNING.ai.diveSeconds) this.set('zoom');
@@ -382,10 +485,15 @@ export class FighterBrain implements Brain {
     const sk = me.skill;
     const muzzle = me.armament.guns[0]?.type.muzzle ?? 750;
     const range = t.pos.distTo(fs.pos);
-    // Aim with a little skill-dependent wander.
+    // Aim with a little skill-dependent wander. Against another AI it grows
+    // with the closing speed: a head-on pass at 500 mph gives a second's
+    // snap judgement, not a careful aim.
     if (ctx.time >= this.jitterT) {
       this.jitterT = ctx.time + 0.8;
-      const e = (1 - sk.aim) * 7 * (sk.wander ?? 1);
+      const los = t.pos.clone().sub(fs.pos).normalize();
+      const closing = fs.vel.clone().sub(t.fs.vel).dot(los);
+      const k = t.isPlayer ? 1 : 1 + Math.max(0, closing - TUNING.ai.closureEasy) / TUNING.ai.closureHard;
+      const e = (1 - sk.aim) * 7 * (sk.wander ?? 1) * k;
       this.aimJitter.set(ctx.rng.gauss() * e, ctx.rng.gauss() * e, ctx.rng.gauss() * e);
     }
     const lead = range < 1200 ? leadPoint(fs.pos, fs.vel, t.pos, t.fs.vel, muzzle).add(this.aimJitter) : t.pos.clone();
@@ -398,13 +506,36 @@ export class FighterBrain implements Brain {
       this.set('extend');
       return;
     }
-    const err = flyDirection(fs, dir, c, gLim, sk.aggression > 0.5 ? 1.2 : 1);
+    // Against another AI, pull hard for the lead: a gentle pull sits in lag
+    // and the fight goes round for ever. Against the player it stays as playtested.
+    const gain = (t.isPlayer ? 1 : TUNING.ai.attackGain) * (sk.aggression > 0.5 ? 1.2 : 1);
+    const err = (this.aimErr = flyDirection(fs, dir, c, gLim, gain));
     // Don't hang on the edge of the stall unless green.
     if (sk.level !== 'green' && fs.buffet > 0.4) c.pitch = Math.min(c.pitch, stickForG(me.type, availableG(fs, 0.85)));
     c.throttle = range < 300 && closure > 35 && sk.level === 'experte' ? 0.55 : 1;
     // Fire inside range when the target's span roughly fills the lead tolerance.
-    const tol = Math.atan((t.type.span * 0.5) / Math.max(range, 30)) * (sk.level === 'green' ? 2.2 : 1.2 - sk.aim * 0.3);
+    let tol = Math.atan((t.type.span * 0.5) / Math.max(range, 30)) * (sk.level === 'green' ? 2.2 : 1.2 - sk.aim * 0.3);
+    // Against another AI, a pilot also takes the snap shot a turning fight
+    // offers: holding the lead inside a wingspan almost never happens there.
+    // Against the player it stays as playtested.
+    if (!t.isPlayer) tol = Math.max(tol, (TUNING.ai.snapDeg[sk.level] * Math.PI) / 180);
     if (range < sk.fireRange && err < tol) me.trigger = true;
+    // Against another AI, fly the fight your aircraft wins.
+    if (!t.isPlayer) {
+      const edge = turnEdge(me, t);
+      if (err > 0.1) this.lagT += ctx.dt; else this.lagT = 0;
+      // The better turner, stuck in lag: throttle back towards corner speed and
+      // keep pulling. Slow, the lighter wing turns inside and the lead comes.
+      if (edge > TUNING.ai.turnEdge && this.lagT > 3 && fs.ias > cornerSpeed(me) * 0.95) c.throttle = TUNING.ai.turnFightThrottle;
+      // The worse turner won't be drawn into it: no shot after a few seconds, dive away and come again.
+      if (edge < 1 / TUNING.ai.turnEdge && this.lagT > TUNING.ai.refuseTurnAfter && err > 0.35) {
+        this.lagT = 0;
+        this.extendDir = fs.forward().clone();
+        this.extendDir.y = -0.3;
+        this.set('extend');
+        return;
+      }
+    }
     // Boom and zoom: a disciplined 109 that's above won't hang about in a turning fight.
     if (me.type.id === 'bf109' && sk.aggression < 0.5 && this.stateT > 12 && err > 0.6) {
       this.extendDir = fs.forward().clone();
