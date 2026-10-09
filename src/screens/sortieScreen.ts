@@ -19,6 +19,7 @@ import type { WorldMap } from '../content/world/map';
 import type { WorldObjects } from '../content/world/objects';
 import type { Ship } from '../render/worldLayer';
 import type { RTMessage } from '../sim/controller';
+import type { Raid } from '../sim/raid';
 
 /** What the screen needs of a sortie: the RAF scramble, or the 109 escort. */
 export interface FlownSortie {
@@ -27,7 +28,7 @@ export interface FlownSortie {
   readonly objects: WorldObjects;
   readonly ships: Ship[];
   readonly spec: { start: 'readiness' | 'air'; month: number; day: number; home: string; leading: boolean };
-  readonly controller: { readonly log: RTMessage[]; readonly lastVector?: { heading: number } | null };
+  readonly controller: { readonly log: RTMessage[]; readonly lastVector?: { heading: number } | null; readonly targetRaid?: Raid | null };
   readonly prompts: string[];
   readonly result: SortieResult | null;
   readonly phase: string;
@@ -71,6 +72,10 @@ export class SortieScreen extends FlightScreen {
     this.scene.layers.push(makeWorldLayer(sortie.objects, sortie.world, () => sortie.ships, plumes));
     this.world.autoRudder = app.settings.autoRudder;
     app.input.throttle = sortie.spec.start === 'air' ? 0.85 : 0;
+  }
+
+  protected vectoredRaid(): Raid | null | undefined {
+    return 'targetRaid' in this.sortie.controller && this.sortie.world.player?.side === 'raf' ? this.sortie.controller.targetRaid ?? null : undefined;
   }
 
   protected homing(): Homing | null {
@@ -177,7 +182,7 @@ export class SortieScreen extends FlightScreen {
     lines.forEach((l, i) => {
       const part = l.slice(0, Math.max(0, shown - n));
       n += l.length;
-      drawText(fb, part, 10, 2 + i * 6, this.rtFrom === 'controller' ? C.SIGHT : C.CHALK, 'tiny');
+      drawText(fb, part, 10, 2 + i * 6, this.rtFrom === 'controller' ? C.SIGHT : this.rtFrom === 'other' ? C.GREY_L : C.CHALK, 'tiny');
     });
     // Crackle.
     for (let i = 0; i < 12; i++) pset(fb, (this.world.tick * 37 + i * 53) % W, (i * 7 + this.world.tick) % h, C.GREY_D);

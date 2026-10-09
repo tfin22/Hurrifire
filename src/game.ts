@@ -10,7 +10,7 @@ import { phaseFor } from './content/raids';
 import { CALLSIGNS } from './content/text/rt';
 import { PILOT_NAMES } from './content/text/briefing';
 import { generateWeather } from './sim/weather';
-import { generateRaids, SortieResult, SortieSpec } from './sim/sortie';
+import { generateRaids, planRaids, SortieResult, SortieSpec } from './sim/sortie';
 import { SkillLevel } from './sim/ai/types';
 import { AircraftId } from './content/aircraft';
 import { CampaignState, loadCampaign, newCampaign, NewCampaignOpts, saveCampaign, KeyValueStore } from './campaign/campaign';
@@ -121,7 +121,7 @@ export class Game {
       seed, month, day, hour: 9 + rng.int(9), weather, phase,
       home: homeName, playerType: rng.chance(0.5) ? 'spitfire' : 'hurricane', playerName: this.pilot.name,
       squadron: rng.pick(CALLSIGNS.squadrons), controller: CALLSIGNS.controllers[homeName] ?? 'Sapper',
-      leading: true, others, raids: generateRaids(rng, phase, home, this.map, underAttack, phase === 'london' ? 2 : 1),
+      leading: true, others, raids: planRaids(rng, phase, home, this.map, underAttack),
       start: 'readiness', convergenceM: this.app.settings.convergenceYards * 0.9144, underAttack,
       fatigue: 0, assist: this.app.settings.assist,
     };

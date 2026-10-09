@@ -2,6 +2,7 @@
 // G and buffet effects, time compression, the HUD and debug readouts.
 
 import { drawHoming, drawSpotting } from './spotting';
+import type { Raid } from '../sim/raid';
 import type { Homing } from '../sim/sortie';
 import { WorldMap } from '../content/world/map';
 import type { App, Screen } from '../app';
@@ -659,7 +660,7 @@ export class FlightScreen implements Screen {
     const me = this.player;
     const cam = this.cam;
     fb.setClip(cam.vx0, cam.vy0, cam.vx1, cam.vy1);
-    if (this.app.settings.markers) drawSpotting(fb, cam, this.world, me, this.opts.terrain instanceof WorldMap ? this.opts.terrain : null);
+    if (this.app.settings.markers) drawSpotting(fb, cam, this.world, me, this.opts.terrain instanceof WorldMap ? this.opts.terrain : null, this.vectoredRaid());
     const h = this.homing();
     if (h && !me.fs.onGround) drawHoming(fb, cam, me, h);
     fb.resetClip();
@@ -947,6 +948,11 @@ export class FlightScreen implements Screen {
   }
 
   /** The field from the last R/T homing, if any (a sortie has the R/T). */
+  /** The raid the controller has us on (undefined: no controller, mark everything near). */
+  protected vectoredRaid(): Raid | null | undefined {
+    return undefined;
+  }
+
   protected homing(): Homing | null {
     return null;
   }

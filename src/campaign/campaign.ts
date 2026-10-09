@@ -15,7 +15,7 @@ import { CAMPAIGN_DAYS, NEWS, RANK_NAMES, VERDICTS } from '../content/text/campa
 import type { WorldMap } from '../content/world/map';
 import { SkillLevel } from '../sim/ai/types';
 import { generateWeather, DayWeather } from '../sim/weather';
-import { generateRaids, SortieResult, SortieSpec, SquadronPilot } from '../sim/sortie';
+import { planRaids, SortieResult, SortieSpec, SquadronPilot } from '../sim/sortie';
 import { TUNING } from '../tuning';
 
 export const CAMPAIGN_VERSION = 1;
@@ -232,7 +232,7 @@ export function nextSortieSpec(s: CampaignState, map: WorldMap, opts: { converge
     weather: dayWeather(s), phase, home: s.home, playerType: s.aircraft, playerName: playerName(s),
     squadron: s.squadron, controller: CALLSIGNS.controllers[s.home] ?? 'Sapper',
     leading, others: others.map(toSp),
-    raids: generateRaids(rng, phase, home, map, underAttack, big ? 2 : 1),
+    raids: planRaids(rng, phase, home, map, underAttack, big ? 3 : 1),
     start: 'readiness', convergenceM: opts.convergenceM, underAttack,
     fatigue: s.player.fatigue, assist: opts.assist, formation: s.formation,
   };

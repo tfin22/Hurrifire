@@ -137,7 +137,7 @@ export class World {
       planes: this.planes,
       sun: this.sun,
       losClear: (a, b) => this.losClear(a, b),
-      home: (side) => this.homes[side as Side],
+      home: (side, me) => me?.home ?? this.homes[side as Side],
       groundAt: (x, z) => this.ground.heightAt(x, z),
     };
   }
@@ -242,10 +242,13 @@ export class World {
     return {
       wind: this.weather.wind,
       groundAt: (x, z) => {
-        const s = SURFACE_FRICTION[this.ground.surfaceAt(x, z)];
         g.h = this.ground.heightAt(x, z);
-        g.friction = s.friction;
-        g.soft = s.soft;
+        // What the ground is made of only matters near it: skip the lookup at height.
+        if (p.pos.y - g.h < 30) {
+          const s = SURFACE_FRICTION[this.ground.surfaceAt(x, z)];
+          g.friction = s.friction;
+          g.soft = s.soft;
+        }
         return g;
       },
       onTouchdown: (info) => this.onTouchdown(p, info),
@@ -515,11 +518,15 @@ export class World {
 
   private bulletsStep(dt: number): void {
     const bs = this.bullets;
+    // Nothing is hit from further than this on either axis, even drawn large: a cheap first test.
+    const reach = 60 * Math.max(1, TUNING.targets.scale);
     for (let i = 0; i < bs.length; i++) {
       const b = bs[i];
       stepBullet(b, dt);
       if (b.dead) continue;
       for (const p of this.planes) {
+        const ax = p.pos.x - b.pos.x, az = p.pos.z - b.pos.z;
+        if (ax > reach || ax < -reach || az > reach || az < -reach) continue;
         if (p.id === b.ownerId || !p.airborneObject) continue;
         // Big targets: the player's rounds hit enemies as large as they're drawn.
         const me = this.player;

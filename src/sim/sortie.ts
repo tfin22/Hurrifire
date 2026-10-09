@@ -9,7 +9,7 @@ import { Rng } from '../core/rng';
 import { AircraftId, AIRCRAFT } from '../content/aircraft';
 import { ASSEMBLY, RAID_TEMPLATES, TARGETS } from '../content/raids';
 import { CAUSE, WRITE_UP, LANDING_LINES, logClaims, logEngaged, logNoContact, LOSS_LINES, Phase } from '../content/text/briefing';
-import { RT, clockOf, sayHeading, sayMiles } from '../content/text/rt';
+import { CALLSIGNS, RT, clockOf, sayAngels, sayHeading, sayMiles, sayStrength } from '../content/text/rt';
 import { describePlace, describeRaid, distanceToEnglishCoast, isFrance, placeName } from '../content/world/describe';
 import { Airfield, lonLatToXZ, WorldMap } from '../content/world/map';
 import { WorldObjects } from '../content/world/objects';
@@ -26,6 +26,7 @@ import { damageFraction } from './damage';
 import { DockingComputer } from './docking';
 import { Plane } from './plane';
 import { Raid, RaidSpec } from './raid';
+import { OtherEvent, OtherSquadron, OtherSquadronSpec } from './squadrons';
 import { dayOfYear, sunDirection } from './sun';
 import { DayWeather, windVector } from './weather';
 import { World } from './world';
@@ -65,6 +66,8 @@ export interface SortieSpec {
   formation?: 'vic' | 'pairs';
   /** Spawn the player at this height and position for 'air' starts. */
   airStart?: { pos: Vec3; heading: number };
+  /** Other squadrons up as well (default on). */
+  otherSquadrons?: boolean;
 }
 
 export type SortiePhase = 'startup' | 'takeoff' | 'climb' | 'combat' | 'rtb' | 'down' | 'parachute' | 'over';
@@ -161,6 +164,8 @@ export class Sortie {
   readonly base: Airfield;
   readonly player: Plane;
   readonly formation: Plane[] = [];
+  /** Other squadrons up at the same time. */
+  readonly others: OtherSquadron[] = [];
   /** Each formation member's slot (body-frame offset from the leader). */
   private slots: Vec3[] = [];
   /** Arcade: the squadron has jumped to the raid (once a sortie). */
@@ -281,6 +286,8 @@ export class Sortie {
 
     // Raids.
     for (const rs of spec.raids) w.addRaid(new Raid(w.raids.length + 1, rs, this.rng.fork(rs.name)));
+    // And the other squadrons sent after them.
+    if (spec.otherSquadrons !== false) this.planOthers(spec, map);
     // Convoys in the Channel phase.
     for (const r of spec.raids) {
       if (r.kind !== 'convoy') continue;
@@ -298,6 +305,59 @@ export class Sortie {
     const angels = spec.raids.length ? Math.round((spec.raids[0].alt * M_TO_FT) / 1000) * 1000 : 15000;
     this.controller.scramble(this.view(), spec.underAttack ? 'base' : 'base', Math.max(10000, angels - 3000));
     if (spec.start === 'readiness') this.prompts.push(spec.assist ? 'PRESS START' : 'PRIMER, MAGS, STARTER');
+  }
+
+  /** Other squadrons against each raid, and in September, perhaps 12 Group's wing. */
+  private planOthers(spec: SortieSpec, map: WorldMap): void {
+    const S = TUNING.sky;
+    const rng = this.rng.fork('others');
+    const calls = CALLSIGNS.others.filter((c) => c !== spec.squadron);
+    const bases = TARGETS.airfield.filter((n) => n !== spec.home).map((n) => map.airfieldByName(n)).filter((a): a is Airfield => !!a);
+    const formation = spec.formation ?? 'vic';
+    const add = (o: OtherSquadronSpec) => {
+      const sq = new OtherSquadron(o, rng.fork(o.callsign));
+      sq.onEvent = (e, s, raid) => this.otherEvent(e, s, raid);
+      this.others.push(sq);
+    };
+    for (const r of this.world.raids) {
+      if (!r.bombing) continue;
+      const wts = S.othersPerRaid;
+      let x = rng.next() * wts.reduce((a, b) => a + b, 0), n = 0;
+      while (n < wts.length - 1 && x > wts[n]) x -= wts[n++];
+      for (let i = 0; i < n && calls.length && bases.length; i++) {
+        const callsign = calls.splice(rng.int(calls.length), 1)[0];
+        const base = rng.pick(bases);
+        add({
+          callsign, type: rng.chance(0.6) ? 'hurricane' : 'spitfire', count: 10 + rng.int(3),
+          base: base.pos.clone(), baseName: base.name, raidId: r.id, scrambleAt: r.spec.delay + rng.range(20, 180), formation,
+        });
+      }
+    }
+    // 12 Group's big wing: three squadrons from Duxford, slow to form up, after the biggest raid.
+    const big = this.world.raids.filter((r) => r.bombing).sort((a, b) => b.total - a.total)[0];
+    if (spec.phase === 'london' && big && rng.chance(S.bigWingChance)) {
+      const [dx, dz] = lonLatToXZ(52.09, 0.13);
+      for (let i = 0; i < S.bigWingSquadrons; i++) {
+        add({
+          callsign: CALLSIGNS.bigWing[i % CALLSIGNS.bigWing.length], type: i === S.bigWingSquadrons - 1 ? 'spitfire' : 'hurricane', count: 12,
+          base: new Vec3(dx, 30, dz), baseName: 'Duxford', raidId: big.id, scrambleAt: Math.max(0, big.spec.delay - 120), bigWing: true,
+          offset: new Vec3((i - 1) * 700, i * 150, -i * 400), formation: 'vic',
+        });
+      }
+    }
+  }
+
+  /** What the player hears of the other squadrons. */
+  private otherEvent(e: OtherEvent, sq: OtherSquadron, raid: Raid | null): void {
+    const t = this.time, C = this.controller, sqn = this.spec.squadron;
+    const mine = !!raid && raid === C.targetRaid;
+    if (e === 'airborne' && sq.spec.bigWing && sq === this.others.find((o) => o.spec.bigWing)) {
+      const n = this.others.filter((o) => o.spec.bigWing).reduce((a, o) => a + o.spec.count, 0);
+      C.say(t, RT.bigWing(sqn, C.callsign, sayStrength(n), sayAngels(((raid?.alt ?? 5000) + 1500) * M_TO_FT)), 'controller', false);
+    } else if (e === 'airborne' && mine && !sq.spec.bigWing) C.say(t, RT.otherUp(sqn, C.callsign, sq.spec.callsign), 'controller', false);
+    else if (e === 'engaging' && mine) C.say(t, RT.otherEngaging(sqn, C.callsign, sq.spec.callsign, describeRaid(this.map, raid!.plot, raid!.vel)), 'controller', false);
+    else if (e === 'engaging') C.say(t, RT.otherTally(sq.spec.callsign), 'other', false, 0.55);
+    else if (e === 'tallyHo') C.say(t, RT.otherTally(sq.spec.callsign), 'other', true);
   }
 
   private nextLeader(): Plane | null {
@@ -438,6 +498,7 @@ export class Sortie {
     this.startup(dt);
     const w = this.world;
     w.step(this.docking.control(this.player, f));
+    for (const o of this.others) o.step(dt, w, this.player, this.time);
     for (const s of this.ships) {
       if (s.sunk) continue;
       s.pos.x += Math.sin(s.heading) * 4 * dt;
@@ -712,7 +773,16 @@ export class Sortie {
     let turned = 0, bombed = 0, kg = 0;
     for (const r of w.raids) {
       if (!r.started) continue;
+      // Free hunts and sweeps carry no bombs: just say they were about.
+      if (!r.bombing) {
+        const met = r.planes.some((q) => q.status !== 'flying' || this.formation.some((f) => q.damage.by[f.id]));
+        raidNotes.push(`109s were hunting over ${r.spec.targetName}${met ? ', and the squadron tangled with them' : ''}.`);
+        continue;
+      }
       kg += r.bombsOnTarget;
+      const helped = this.others.filter((o) => o.fought.has(r.id)).map((o) => o.spec.callsign);
+      const lost = r.lostUnseen + r.bombers.filter((b) => b.status !== 'flying' && b.status !== 'landed').length;
+      if (helped.length) raidNotes.push(`${helped.join(' and ')} squadron${helped.length > 1 ? 's' : ''} also engaged the raid on ${r.spec.targetName}${lost ? `; ${lost} of its bombers were lost` : ''}.`);
       if (r.turnedBack || (r.bombsDropped === 0 && r.phase !== 'bombRun' && r.phase !== 'inbound')) { turned++; raidNotes.push(`The raid on ${r.spec.targetName} was turned back before it bombed.`); }
       else if (r.bombsDropped > 0) { bombed++; raidNotes.push(`The raid reached ${r.spec.targetName}. ${r.bombsOnTarget > 0 ? 'Bombs fell on the target.' : 'The bombing was scattered.'}`); }
       else raidNotes.push(`The raid on ${r.spec.targetName} was still on its way when you left it.`);
@@ -900,6 +970,9 @@ export function formationSlots(n: number, style: 'vic' | 'pairs' = 'vic'): Vec3[
 
 export function generateRaids(rng: Rng, phase: Phase, home: Airfield, map: WorldMap, underAttack: boolean, count = 1): RaidSpec[] {
   const out: RaidSpec[] = [];
+  // Each raid has its own target, where there's a choice.
+  const used = new Set<string>();
+  const fresh = <T>(list: T[], name: (t: T) => string): T => rng.pick(list.filter((t) => !used.has(name(t))).length ? list.filter((t) => !used.has(name(t))) : list);
   for (let n = 0; n < count; n++) {
     const tpls = RAID_TEMPLATES[phase];
     const total = tpls.reduce((a, t) => a + t.weight, 0);
@@ -909,12 +982,12 @@ export function generateRaids(rng: Rng, phase: Phase, home: Airfield, map: World
     let targetName: string, target: Vec3;
     if (t.kind === 'airfield') {
       const names = underAttack && n === 0 ? [home.name] : TARGETS.airfield;
-      const af = map.airfieldByName(rng.pick(names)) ?? home;
+      const af = map.airfieldByName(fresh(names, (s) => s)) ?? home;
       targetName = af.name;
       target = af.pos.clone();
     } else {
       const list = TARGETS[t.kind];
-      const pick = rng.pick(list);
+      const pick = fresh(list, (x) => x.name);
       const [x, z] = lonLatToXZ(pick.lat, pick.lon);
       targetName = pick.name;
       target = new Vec3(x, 0, z);
@@ -937,7 +1010,37 @@ export function generateRaids(rng: Rng, phase: Phase, home: Airfield, map: World
       entry.copy(start).lerp(target, 0.5);
       delay = 5;
     }
+    used.add(targetName);
     out.push({ name: `raid${n + 1}`, kind: t.kind, targetName, target, start, entry, alt, speed: t.speed, groups, delay });
   }
   return out;
+}
+
+/**
+ * The day's trade for one sortie: one to three raids, later ones starting a
+ * few minutes apart and going for different targets, and now and then a
+ * free hunt of 109s roving over Kent on their own. `atLeast` raises the
+ * count (15 September).
+ */
+export function planRaids(rng: Rng, phase: Phase, home: Airfield, map: WorldMap, underAttack: boolean, atLeast = 1): RaidSpec[] {
+  const S = TUNING.sky;
+  const w = S.raidCount[phase];
+  let r = rng.next() * w.reduce((a, b) => a + b, 0), count = 1;
+  while (count < w.length && r > w[count - 1]) r -= w[count++ - 1];
+  const raids = generateRaids(rng, phase, home, map, underAttack, Math.max(count, atLeast));
+  // Staggered: each later raid a few minutes after the one before.
+  for (let i = 1; i < raids.length; i++) raids[i].delay = raids[i - 1].delay + rng.range(S.raidGap[0], S.raidGap[1]);
+  if (rng.chance(S.freeHuntChance[phase])) {
+    const pick = rng.pick(TARGETS.sweep);
+    const [x, z] = lonLatToXZ(pick.lat, pick.lon);
+    const asm = rng.pick(ASSEMBLY);
+    const [sx, sz] = lonLatToXZ(asm.lat, asm.lon);
+    const start = new Vec3(sx, 0, sz), target = new Vec3(x, 0, z);
+    raids.push({
+      name: 'freehunt', kind: 'sweep', targetName: pick.name, target, start, entry: start.clone().lerp(target, 0.45),
+      alt: rng.range(6500, 8000), speed: 120, delay: rng.range(60, 600),
+      groups: [{ type: 'bf109', count: 4 + rng.int(5), role: 'sweep', altOffset: 0, skill: rng.chance(0.6) ? 'experte' : 'average' }],
+    });
+  }
+  return raids;
 }

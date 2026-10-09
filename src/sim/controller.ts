@@ -12,7 +12,8 @@ import type { Raid } from './raid';
 
 export interface RTMessage {
   t: number;
-  from: 'controller' | 'squadron' | 'player';
+  /** 'other' = another squadron on the same frequency, heard but not ours. */
+  from: 'controller' | 'squadron' | 'player' | 'other';
   text: string;
   /** Spoken calls stop time compression. */
   urgent?: boolean;
@@ -103,7 +104,7 @@ export class SectorController {
   }
 
   say(t: number, text: string, from: RTMessage['from'] = 'controller', urgent = true, fade = 0): void {
-    this.log.push({ t, from, text: from === 'controller' ? garble(text, fade, this.rng) : text, urgent });
+    this.log.push({ t, from, text: from === 'controller' || from === 'other' ? garble(text, fade, this.rng) : text, urgent });
   }
 
   /** How badly the R/T is breaking up (0 clear … 1 nothing). */
@@ -138,8 +139,17 @@ export class SectorController {
       }
       return;
     }
-    live.sort((a, b) => a.plot.distTo(v.pos) - b.plot.distTo(v.pos));
-    const raid = (this.targetRaid = live[0]);
+    // One raid at a time: keep the one we were given while it's still coming;
+    // otherwise the nearest that's bringing bombs (a fighter sweep only if that's all there is).
+    if (!this.targetRaid || !live.includes(this.targetRaid)) {
+      const bombing = live.filter((r) => r.bombing);
+      const pool = bombing.length ? bombing : live;
+      pool.sort((a, b) => a.plot.distTo(v.pos) - b.plot.distTo(v.pos));
+      if (this.targetRaid) this.lastVector = null; // a new raid: a fresh vector, said in full
+      this.targetRaid = pool[0];
+      this.nextVector = Math.min(this.nextVector, v.time + 5);
+    }
+    const raid = this.targetRaid;
     if (v.engaged) {
       if (!this.ackedTally) { this.ackedTally = true; this.say(v.time, RT.tallyAck(this.callsign), 'controller', false, fade); }
       return;
@@ -170,6 +180,14 @@ export class SectorController {
       ? RT.vector(this.squadron, this.callsign, sayHeading((vec.heading * 180) / Math.PI), sayAngels(angelsFt), buster, sayStrength(raid.estimatedStrength), where)
       : RT.update(this.squadron, this.callsign, sayHeading((vec.heading * 180) / Math.PI), sayStrength(raid.estimatedStrength), where, sayAngels(angelsFt));
     this.say(v.time, text, 'controller', true, fade);
+  }
+
+  /** Put the squadron on to a different raid (asked for on the R/T); a fresh vector follows. */
+  assign(raid: Raid, time: number): void {
+    this.targetRaid = raid;
+    this.lastVector = null;
+    this.nextVector = time + 3;
+    this.lastClose = -1000;
   }
 
   /** Player called tally-ho. */

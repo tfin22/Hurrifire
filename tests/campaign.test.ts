@@ -66,7 +66,7 @@ describe('campaign progression', () => {
     }
   });
 
-  it('builds a full sortie spec: phase from the date, the roster in the air, two raids on 15 September', () => {
+  it('builds a full sortie spec: phase from the date, the roster in the air, three raids or more on 15 September', () => {
     const map = worldMap();
     const s = newCampaign(4, opts);
     const spec = nextSortieSpec(s, map, { convergenceM: 230, assist: true });
@@ -76,7 +76,7 @@ describe('campaign progression', () => {
     s.dayIdx = CAMPAIGN_DAYS.findIndex(([m, d]) => m === 9 && d === 15);
     const big = nextSortieSpec(s, map, { convergenceM: 230, assist: true });
     expect(big.phase).toBe('london');
-    expect(big.raids.length).toBe(2);
+    expect(big.raids.filter((r) => r.name !== 'freehunt').length).toBeGreaterThanOrEqual(3);
   });
 
   it('fatigue builds with sorties and rests overnight', () => {
