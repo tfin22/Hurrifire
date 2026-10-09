@@ -837,3 +837,50 @@ options."
     when you left it": "You broke off out of ammunition, having shot down
     5 of it; the raid went on to Kenley."
   - Under YOU, the report and any Mayday get their own lines.
+
+## AI fighters that fight
+
+Backlog item 3, found while measuring the difficulty setting: two AI
+fighters set on each other circled for minutes and rarely fired. That's
+your wingmen against the escort, and other squadrons against 109s. A probe
+of eight three-minute Spitfire–109 duels at average skill gave 240 rounds
+fired in total, no hits, and two "kills". Those two were 109s flying into
+the ground. Three faults:
+
+- **Too gentle a pull.** The AI asks for G in proportion to its aim error,
+  at 6 G per radian. Fifteen degrees behind the lead asks for about 1.6 G,
+  when closing it needs everything the aircraft has. In range and
+  attacking, the average Spitfire's aim error was over 10° in 93% of
+  samples: it sat in lag for ever. Against another AI, an attacker now
+  pulls three times as hard for the lead (`ai.attackGain`).
+- **Too strict a trigger.** The AI only fired with the lead inside the
+  target's wingspan, about 1.5° at 200 m, which a turning fight almost
+  never offers. Against another AI it now also takes snap shots inside 4°
+  (green), 2.5° (average) or 2° (experte) (`ai.snapDeg`).
+- **Pull-outs started too late.** Ground avoidance began five seconds
+  from impact. At 250 m/s a pull-out needs about 1,800 m, and upside down
+  it first needs a roll the ailerons make slow at that speed (about
+  0.5 rad/s). Now it begins from the height the recovery actually needs:
+  - the time to roll level (the roll rate falls with speed), times the
+    sink rate;
+  - plus the turn radius at the G the pilot will pull, with a quarter
+    again for the speed gained;
+  - times how steep the dive is.
+
+  The recovery itself now steers for a point just above the horizon along
+  its track. That rolls the lift up and pulls from any attitude. Before,
+  it only pulled once the wings were already near level, so steeply
+  inverted it pushed instead.
+
+After: the same eight duels at average give 728 rounds, 139 hits and eight
+winners (Spitfire 3, 109 5). Experten fight decisively too, the 109s
+usually winning on dive-and-zoom and cannon. No aircraft goes down
+unhit.
+
+**Against you, nothing changes.** The harder pull and the snap shots
+apply only when the target is another AI. The balance you've been
+playtesting (enemies bouncing you, and the difficulty levels) was tuned
+against the old steering and trigger. The difficulty probe gives the same
+times to the second: 43 s at flight school, 42 s at normal, 46 s for Spain
+veterans. The pull-out fix applies to everyone; enemies no longer fly
+into the ground, so they no longer hand you free "kills" either.

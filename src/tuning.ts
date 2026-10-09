@@ -163,6 +163,14 @@ export const TUNING = {
     /** 109s break off for France at this fuel fraction (they have little time over England). */
     bingoFuel109: 0.42,
     groundAvoidAgl: 280,
+    /** AI against AI: how hard an attacker pulls for the lead (x the usual 6 G per radian of aim error). Pull hard or sit in lag. */
+    attackGain: 3,
+    /** AI against AI: fire inside this aim error (deg) as well as when the lead sits inside a wingspan. */
+    snapDeg: { green: 4, average: 2.5, experte: 2 } as Record<string, number>,
+    /** How fast (rad/s) a pilot can roll the wings level to pull out of a dive, slow and fast (ailerons stiffen with speed). */
+    recoveryRollRate: [1.8, 0.45] as const,
+    /** ...between these airspeeds (m/s IAS). */
+    recoveryRollIas: [100, 250] as const,
     extendSeconds: 6,
     zoomSeconds: 6,
     buntSeconds: 1.3,

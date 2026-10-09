@@ -53,11 +53,31 @@ export interface DefensiveCircle {
   lastThreat: number;
 }
 
+/**
+ * Height (m) a pull-out from the present dive needs: first rolling the
+ * wings level (upside down, that's most of a second and a half of falling),
+ * then the turn at the G we can pull, with room for the speed it gathers.
+ */
+export function pullOutHeight(me: Plane): number {
+  const fs = me.fs;
+  const v = Math.max(1, fs.vel.len());
+  const sink = Math.max(0, -fs.vel.y);
+  const n = Math.max(2, Math.min(availableG(fs, 0.85), me.skill.gLimit));
+  const r = (v * v * 1.25) / (9.81 * (n - 1));
+  const sinDive = Math.min(1, sink / v);
+  const A = TUNING.ai, k = clamp((fs.ias - A.recoveryRollIas[0]) / (A.recoveryRollIas[1] - A.recoveryRollIas[0]), 0, 1);
+  const rate = A.recoveryRollRate[0] + (A.recoveryRollRate[1] - A.recoveryRollRate[0]) * k;
+  const roll = (Math.abs(fs.roll) / rate) * sink;
+  return roll + r * (1 - Math.sqrt(1 - sinDive * sinDive));
+}
+
 export class FighterBrain implements Brain {
   state: FighterState = 'patrol';
   stateT = 0;
   targetId = -1;
   threatId = -1;
+  /** Angle (rad) between the nose and the lead point on the last attacking step. */
+  aimErr = Math.PI;
   readonly contacts = new ContactMemory();
   private nextThink = 0;
   private nextSpot = 0;
@@ -111,10 +131,10 @@ export class FighterBrain implements Brain {
       this.nextThink = ctx.time + me.skill.think;
       this.think(me, ctx);
     }
-    // Ground avoidance overrides everything.
+    // Ground avoidance overrides everything. Fast and steep, a pull-out takes
+    // a lot of height: start it while there's room for the turn it needs.
     const agl = me.pos.y - ctx.groundAt(me.pos.x, me.pos.z);
-    const sinkTime = me.fs.vel.y < -1 ? agl / -me.fs.vel.y : 99;
-    if ((agl < TUNING.ai.groundAvoidAgl && me.fs.vel.y < -5) || sinkTime < 5) {
+    if (me.fs.vel.y < -5 && agl < pullOutHeight(me) + TUNING.ai.groundAvoidAgl) {
       if (this.state !== 'bail') this.set('pullUp');
     }
     this.act(me, ctx);
@@ -270,9 +290,15 @@ export class FighterBrain implements Brain {
     c.yaw = 0;
     switch (this.state) {
       case 'pullUp': {
-        c.roll = rollTo(fs, 0, 3);
-        c.pitch = Math.abs(fs.roll) < 1.2 ? stickForG(me.type, Math.min(gLim, 4.5)) : 0;
-        c.throttle = 1;
+        // Aim a little above the horizon along our track: from any attitude,
+        // inverted or vertical, that rolls the lift up and pulls.
+        const dir = fs.vel.clone();
+        dir.y = 0;
+        if (dir.lenSq() < 1) { dir.copy(fs.forward()); dir.y = 0; }
+        dir.normalize();
+        dir.y = 0.25;
+        flyDirection(fs, dir, c, Math.min(gLim + 0.5, 6));
+        c.throttle = fs.vel.y < -60 ? 0.3 : 1;
         if (fs.vel.y > 2 && fs.pos.y - ctx.groundAt(fs.pos.x, fs.pos.z) > TUNING.ai.groundAvoidAgl) this.set(this.targetId >= 0 ? 'attack' : this.opts.leader ? 'formation' : 'patrol');
         break;
       }
@@ -398,12 +424,19 @@ export class FighterBrain implements Brain {
       this.set('extend');
       return;
     }
-    const err = flyDirection(fs, dir, c, gLim, sk.aggression > 0.5 ? 1.2 : 1);
+    // Against another AI, pull hard for the lead: a gentle pull sits in lag
+    // and the fight goes round for ever. Against the player it stays as playtested.
+    const gain = (t.isPlayer ? 1 : TUNING.ai.attackGain) * (sk.aggression > 0.5 ? 1.2 : 1);
+    const err = (this.aimErr = flyDirection(fs, dir, c, gLim, gain));
     // Don't hang on the edge of the stall unless green.
     if (sk.level !== 'green' && fs.buffet > 0.4) c.pitch = Math.min(c.pitch, stickForG(me.type, availableG(fs, 0.85)));
     c.throttle = range < 300 && closure > 35 && sk.level === 'experte' ? 0.55 : 1;
     // Fire inside range when the target's span roughly fills the lead tolerance.
-    const tol = Math.atan((t.type.span * 0.5) / Math.max(range, 30)) * (sk.level === 'green' ? 2.2 : 1.2 - sk.aim * 0.3);
+    let tol = Math.atan((t.type.span * 0.5) / Math.max(range, 30)) * (sk.level === 'green' ? 2.2 : 1.2 - sk.aim * 0.3);
+    // Against another AI, a pilot also takes the snap shot a turning fight
+    // offers: holding the lead inside a wingspan almost never happens there.
+    // Against the player it stays as playtested.
+    if (!t.isPlayer) tol = Math.max(tol, (TUNING.ai.snapDeg[sk.level] * Math.PI) / 180);
     if (range < sk.fireRange && err < tol) me.trigger = true;
     // Boom and zoom: a disciplined 109 that's above won't hang about in a turning fight.
     if (me.type.id === 'bf109' && sk.aggression < 0.5 && this.stateT > 12 && err > 0.6) {
