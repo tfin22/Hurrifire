@@ -101,19 +101,88 @@ describe('pulling out of a dive', () => {
     expect(steep).toBeGreaterThan(800);
   });
 
-  it('a 109 caught upside down in a steep dive at 2,000 m recovers', () => {
-    for (let seed = 1; seed <= 4; seed++) {
+  it('caught upside down in a steep dive, a Spitfire recovers from 2,000 m, a 109 (heavier at speed) from 3,000 m', () => {
+    for (const [type, alt] of [['spitfire', 2000], ['bf109', 3000]] as const) for (let seed = 1; seed <= 4; seed++) {
       const w = new World(seed, flat);
-      const p = w.addPlane('bf109', 'lw', 'B');
+      const p = w.addPlane(type, 'lw', 'B');
       p.skill = skillFor('average');
-      p.fs.setAirborne(new Vec3(0, 2000, 0), 0, 200, -1.1);
+      p.fs.setAirborne(new Vec3(0, alt, 0), 0, 200, -1.1);
       // Half-rolled: upside down.
       p.fs.q = Quat.fromEuler(0, -1.1, Math.PI);
-      p.brain = new FighterBrain({ waypoint: new Vec3(0, 2000, 30000) });
+      p.brain = new FighterBrain({ waypoint: new Vec3(0, alt, 30000) });
       let lowest = Infinity;
       for (let i = 0; i < 30 * 50 && p.status === 'flying'; i++) { w.step(null); lowest = Math.min(lowest, p.pos.y); }
       expect(p.status).toBe('flying');
       expect(lowest).toBeGreaterThan(50);
     }
   });
+});
+
+describe("the 109's heavy elevator", () => {
+  /** Full back stick from a shallow dive at about `mph` IAS: the most G in the first 0.6 s, and after a further `hold` seconds. */
+  function pull(type: 'spitfire' | 'bf109', mph: number, hold = 0) {
+    const w = new World(1, flat);
+    const p = w.addPlane(type, 'raf', 'T');
+    p.isPlayer = true;
+    w.player = p;
+    p.fs.setAirborne(new Vec3(0, 3000, 0), 0, (mph / 2.237) * 1.15, -0.4);
+    let first = 0, later = 0;
+    for (let i = 0; i < (1.5 + hold) * 50; i++) {
+      w.step({ pitch: 1, roll: 0, yaw: 0, throttle: 0.3, fire: false, boost: false, brake: false, pump: false });
+      // The first moments, before any trim is wound in; then what holding it gets.
+      if (i < 30) first = Math.max(first, p.fs.nz);
+      else if (i >= 75) later = Math.max(later, p.fs.nz);
+    }
+    return { first, later };
+  }
+
+  it('at 400 mph the 109 pilot can pull only about 4 g; the Spitfire pilot can pull until he blacks out', () => {
+    expect(pull('bf109', 400).first).toBeGreaterThan(3.5);
+    expect(pull('bf109', 400).first).toBeLessThan(4.8);
+    expect(pull('spitfire', 400).first).toBeGreaterThan(7);
+    // Slower, the 109 pulls as hard as anyone.
+    expect(pull('bf109', 270).first).toBeGreaterThan(7);
+  });
+
+  it('held hard back, the 109 pilot winds in trim and slowly gets more', () => {
+    const r = pull('bf109', 430, 2.5);
+    expect(r.later).toBeGreaterThan(r.first + 0.5);
+  });
+
+  it('a Spitfire with a 109 a kilometre behind dives for the deck; the 109 has to pull out higher, and a green one may not', async () => {
+    const { TUNING } = await import('../src/tuning');
+    const keep = TUNING.ai.diveOutChance;
+    (TUNING.ai as { diveOutChance: number }).diveOutChance = 1;
+    try {
+      let dove = 0, spitLow = 0, bfLow = 0, hit = 0;
+      for (let seed = 1; seed <= 8; seed++) {
+        const w = new World(seed, flat);
+        w.sun.set(0, 1, 0);
+        const s = w.addPlane('spitfire', 'raf', 'S'), b = w.addPlane('bf109', 'lw', 'B');
+        s.skill = skillFor('average');
+        b.skill = skillFor('average');
+        s.fs.setAirborne(new Vec3(0, 3000, 0), 0, 130);
+        b.fs.setAirborne(new Vec3(0, 3050, -1000), 0, 150);
+        const sb = new FighterBrain({ holdFire: true, waypoint: new Vec3(0, 3000, 40000) });
+        s.brain = sb;
+        b.brain = new FighterBrain({});
+        let lowS = 1e9, lowB = 1e9, d = false;
+        for (let i = 0; i < 60 * 50 && s.alive && b.alive; i++) {
+          w.step(null);
+          lowS = Math.min(lowS, s.pos.y);
+          if (b.alive) lowB = Math.min(lowB, b.pos.y);
+          if (sb.state === 'diveOut') d = true;
+        }
+        if (d) dove++;
+        spitLow += lowS;
+        bfLow += lowB;
+        if (s.damage.hits > 0) hit++;
+      }
+      expect(dove).toBeGreaterThan(4);
+      expect(hit).toBe(0);
+      expect(bfLow).toBeGreaterThan(spitLow);
+    } finally {
+      (TUNING.ai as { diveOutChance: number }).diveOutChance = keep;
+    }
+  }, 120000);
 });

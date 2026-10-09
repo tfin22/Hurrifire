@@ -99,6 +99,15 @@ export interface AircraftType {
   rollHeavyV: number;
   /** Max load factor the pilot can pull (stick force / structure). */
   maxG: number;
+  /**
+   * Elevator that stiffens with speed (the 109E): above `elevatorHeavyV`
+   * (IAS m/s) the G a pilot can pull with full strength falls, to
+   * `elevatorHeavyG` at `elevatorHeavyEndV`. Without it, only the pilot's
+   * own blackout limits the pull (the Spitfire).
+   */
+  elevatorHeavyV?: number;
+  elevatorHeavyEndV?: number;
+  elevatorHeavyG?: number;
   /** Drag coefficient of dive brakes, if fitted. */
   diveBrakeCd?: number;
   /** Formation cruising speed (m/s, true): a raid flies no faster than its slowest bombers. */
@@ -209,6 +218,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftType> = {
     power: 820_000, engines: 1, propEff: 0.74, critAlt: 4300, lapse: 5600, thrustV0: 58,
     dragRiseV: 205, dragRiseK: 2.0, fuelInjected: true,
     rollRate: 1.6, rollPeakV: 90, rollHeavyV: 150, maxG: 7.5, minG: -3.5, pitchGain: 6.0, vne: 225,
+    // Heavy at speed: about 4 g at 400 mph IAS, 2.5 g diving flat out.
+    elevatorHeavyV: 120, elevatorHeavyEndV: 225, elevatorHeavyG: 2.5,
     bestGlide: 59, fuelBurn: 0.09, boostMul: 1.15, boostSeconds: 300, torque: 0.1,
     groundAttitude: 0.22, gearHeight: 1.8, gear: 'hydraulic', pumpStrokes: 0, robust: 1.0,
     guns: [
@@ -315,6 +326,14 @@ export function massOf(t: AircraftType, fuel: number): number {
 }
 
 /** Clean-configuration stall speed (TAS, m/s) at density rho, 1 g. */
+/** The most G a pilot can pull at this airspeed (IAS m/s): the full limit, unless the elevator stiffens with speed. */
+export function elevatorG(t: AircraftType, ias: number): number {
+  if (!t.elevatorHeavyV || ias <= t.elevatorHeavyV) return t.maxG;
+  const end = t.elevatorHeavyEndV ?? t.vne, g = t.elevatorHeavyG ?? t.maxG;
+  const k = Math.min(1, (ias - t.elevatorHeavyV) / Math.max(1, end - t.elevatorHeavyV));
+  return t.maxG + (g - t.maxG) * Math.pow(k, 0.7);
+}
+
 export function stallSpeed(t: AircraftType, mass: number, rho = 1.225, flaps = 0): number {
   const clMax = t.cl0 + t.clAlpha * t.alphaStall + flaps * t.flapCl;
   return Math.sqrt((2 * mass * 9.81) / (rho * t.wingArea * clMax));

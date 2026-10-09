@@ -16,7 +16,7 @@
 import { clamp, Vec3 } from '../../core/math';
 import { TUNING } from '../../tuning';
 import { leadPoint } from '../ballistics';
-import { stallSpeed } from '../../content/aircraft';
+import { elevatorG, stallSpeed } from '../../content/aircraft';
 import { hash01 } from '../../core/rng';
 import { controllable } from '../damage';
 import type { Plane } from '../plane';
@@ -24,7 +24,7 @@ import { availableG, flyDirection, flyTo, headingAltitude, maxLevelTurn, rollTo,
 import { ContactMemory, threatGeometry } from './spotting';
 import type { AIContext, Brain } from './types';
 
-export type FighterState = 'circle' | 'patrol' | 'formation' | 'attack' | 'extend' | 'zoom' | 'evade' | 'bunt' | 'rtb' | 'bail' | 'glide' | 'pullUp';
+export type FighterState = 'circle' | 'patrol' | 'formation' | 'attack' | 'extend' | 'zoom' | 'evade' | 'bunt' | 'diveOut' | 'rtb' | 'bail' | 'glide' | 'pullUp';
 
 export interface FighterOpts {
   /** Patrol waypoint and height. */
@@ -64,7 +64,8 @@ export function pullOutHeight(me: Plane): number {
   const fs = me.fs;
   const v = Math.max(1, fs.vel.len());
   const sink = Math.max(0, -fs.vel.y);
-  const n = Math.max(2, Math.min(availableG(fs, 0.85), me.skill.gLimit));
+  // What we can actually pull: the wing, our G limit, and (in a 109) the elevator at the speed we'll be doing.
+  const n = Math.max(1.5, Math.min(availableG(fs, 0.85), me.skill.gLimit, elevatorG(me.type, fs.ias * 1.1)));
   const r = (v * v * 1.25) / (9.81 * (n - 1));
   const sinDive = Math.min(1, sink / v);
   const A = TUNING.ai, k = clamp((fs.ias - A.recoveryRollIas[0]) / (A.recoveryRollIas[1] - A.recoveryRollIas[0]), 0, 1);
@@ -128,7 +129,7 @@ export class FighterBrain implements Brain {
 
   onHit(me: Plane, shooterId: number, ctx: AIContext): void {
     this.contacts.tell(shooterId, ctx.time);
-    if (this.state !== 'bail' && this.state !== 'rtb' && this.state !== 'evade' && this.state !== 'bunt') {
+    if (this.state !== 'bail' && this.state !== 'rtb' && this.state !== 'evade' && this.state !== 'bunt' && this.state !== 'diveOut') {
       this.threatId = shooterId;
       this.decideEvasion(me, ctx);
     }
@@ -216,9 +217,14 @@ export class FighterBrain implements Brain {
         threat = t; threatRange = g.range;
       }
     }
-    if (threat && this.state !== 'evade' && this.state !== 'bunt' && this.state !== 'pullUp') {
+    if (threat && this.state !== 'evade' && this.state !== 'bunt' && this.state !== 'diveOut' && this.state !== 'pullUp') {
       this.threatId = threat.id;
       this.decideEvasion(me, ctx);
+      return;
+    }
+    // Diving for the deck: keep going until the pull-out (ground avoidance takes over), or he's gone.
+    if (this.state === 'diveOut') {
+      if (!threat && this.stateT > 8) { this.threatId = -1; this.set('extend'); }
       return;
     }
     if (this.state === 'evade' || this.state === 'bunt') {
@@ -266,6 +272,16 @@ export class FighterBrain implements Brain {
     const pursuerCarb = t ? !t.type.fuelInjected : false;
     if (canBunt && (pursuerCarb || ctx.rng.chance(0.4))) {
       this.set('bunt');
+      return;
+    }
+    // A light elevator against a heavy one (a Spitfire with a 109 behind): dive
+    // for the deck and pull out late. He can't pull as hard at that speed and
+    // has to break off far higher, or fly in.
+    const agl = fs.pos.y - ctx.groundAt(fs.pos.x, fs.pos.z);
+    const heavierBehind = !!t && !!t.type.elevatorHeavyV && !me.type.elevatorHeavyV;
+    const A = TUNING.ai;
+    if (heavierBehind && me.skill.level !== 'green' && agl > A.diveOutMinAgl && agl < A.diveOutMaxAgl && t!.pos.distTo(fs.pos) > A.diveOutMinRange && ctx.rng.chance(A.diveOutChance)) {
+      this.set('diveOut');
       return;
     }
     if (t) {
@@ -389,6 +405,17 @@ export class FighterBrain implements Brain {
         }
         break;
       }
+      case 'diveOut': {
+        // Nose well down, full power, wings level along our track; the pull-out comes from ground avoidance.
+        const dir = fs.forward().clone();
+        dir.y = 0;
+        if (dir.lenSq() < 1e-4) dir.set(Math.sin(fs.heading), 0, Math.cos(fs.heading));
+        dir.normalize();
+        dir.y = -1.4;
+        flyDirection(fs, dir, c, Math.min(gLim, 4));
+        c.throttle = 1;
+        break;
+      }
       case 'bunt': {
         // Push over hard (negative G), then dive away at full power.
         if (this.stateT < TUNING.ai.buntSeconds) {
@@ -398,7 +425,9 @@ export class FighterBrain implements Brain {
           const dir = fs.forward().clone();
           dir.y = -1.2;
           flyDirection(fs, dir, c, 3);
-          if (fs.pos.y - ctx.groundAt(fs.pos.x, fs.pos.z) < 900) this.set('zoom');
+          // Not into a dive we couldn't pull out of (a 109's elevator stiffens with speed).
+          const agl = fs.pos.y - ctx.groundAt(fs.pos.x, fs.pos.z);
+          if (agl < 900 || pullOutHeight(me) > agl * 0.5) this.set('zoom');
         }
         c.throttle = 1;
         if (this.stateT > TUNING.ai.buntSeconds + TUNING.ai.diveSeconds) this.set('zoom');

@@ -83,6 +83,9 @@ export const TUNING = {
     seizeTemp: 140,
     /** Sliding on the belly (or as a wreck): this much friction, plus the surface's rolling friction. */
     slideFriction: 0.45,
+    /** A heavy elevator (the 109) held full back at speed: trim wound in per second (0..1), and how much of the lost G it gives back. */
+    trimRate: 0.3,
+    trimGain: 0.6,
     brakeFriction: 0.3,
     sideFriction: 0.8,
     groundRudder: 0.6,
@@ -180,6 +183,12 @@ export const TUNING = {
     snapDeg: { green: 4, average: 2.5, experte: 2 } as Record<string, number>,
     /** How well a pilot judges when to start a pull-out, drawn afresh each dive (1 = right): green pilots sometimes leave it too late. */
     pullOutJudgement: { green: [0.45, 1.05], average: [1, 1.1], experte: [1, 1] } as Record<string, readonly [number, number]>,
+    /** A Spitfire or Hurricane with a 109 (heavy elevator) behind: the chance it dives for the deck rather than breaking, between these heights (m). */
+    diveOutChance: 0.4,
+    /** ...only with him still out of gun range (m): from close behind, a straight dive is just a better target. */
+    diveOutMinRange: 700,
+    diveOutMinAgl: 1200,
+    diveOutMaxAgl: 6000,
     /** How fast (rad/s) a pilot can roll the wings level to pull out of a dive, slow and fast (ailerons stiffen with speed). */
     recoveryRollRate: [1.8, 0.45] as const,
     /** ...between these airspeeds (m/s IAS). */

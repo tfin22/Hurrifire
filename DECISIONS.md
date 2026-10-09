@@ -949,3 +949,62 @@ the fight's chances.
 
 As before, **against you nothing changes**. The probe of a 109 bouncing a
 Spitfire you're flying gives the same times to the second.
+
+### The 109's heavy elevator
+
+Playtest: "The Messerschmitt's elevator control was very heavy at high
+speed... Spitfire pilots would escape from 109s by diving towards the
+ground and pulling up at the last moment... In extreme fast dives the
+Messerschmitt's heavy elevator meant the aircraft itself was the limiting
+factor."
+
+Not modelled until now: every aircraft's full back stick gave its full G
+at any speed.
+
+- **The elevator stiffens with speed (109E).** Above 120 m/s IAS (about
+  270 mph), the G a pilot can pull with full strength falls: 5.4 g at
+  335 mph, about 4 g at 400 and 3.4 g at 450, down to 2.5 g at its
+  maximum diving speed. That's in line with the RAE trials of a captured
+  109E. Partial stick scales the same way. Spitfire and Hurricane keep
+  their full 7.5 g at any speed, so the pilot blacks out first. The data
+  is per aircraft (`elevatorHeavyV`, `elevatorHeavyEndV`,
+  `elevatorHeavyG`), and Arcade leaves it out.
+- **Trim.** Held hard back at speed, the pilot winds in nose-up trim and
+  slowly wins back G: 0.3 of full trim a second, giving back up to 60% of
+  what the heavy elevator took. This applies to you too when flying the
+  109.
+- **The AI knows its aircraft.**
+  - Its pull-out height uses the G the elevator allows at the speed it
+    will reach.
+  - A 109's push-over-and-dive escape ends once the pull-out it would
+    need is more than half its height.
+  - A green 109 following a Spitfire down still misjudges it now and
+    then.
+- **The Spitfire's escape.** With a 109 behind but still out of gun
+  range (over 700 m), and between 1,200 m and 6,000 m up, an AI Spitfire
+  or Hurricane (not green) dives for the deck 40% of the time rather than
+  breaking. Closer than that, a straight dive is just a better target:
+  all 16 were shot down when we tried it from 450 m, so it breaks into a
+  turn instead.
+
+Measured, with a 109 a kilometre behind a Spitfire at 3,000 m, over 16
+runs:
+- **Against average 109s:** the Spitfire is never hit. It goes down to
+  about 850 m, and the 109s break off at about 900 m.
+- **Against green 109s:** the Spitfire goes down to about 325 m, and 4 of
+  16 green 109s follow it into the ground.
+
+The even-start duels now run (RAF–109, of 16 each):
+- **Side by side:** Spitfire average 5–0, experte 3–0; Hurricane average
+  3–2, experte 3–0.
+- **Crossing:** Spitfire average 8–4; Hurricane average 8–3.
+- **Crossing, both experten:** still go to the 109's cannon head-on (0–7
+  and 0–4).
+
+No unforced crashes. A 109 caught inverted in a steep dive at 400 mph now
+needs about 3,000 m to recover, where a Spitfire needs 2,000.
+
+**Your fights change a little.** This is the flight model, not AI tactics,
+so it applies to enemy 109s diving on you as well. In the probe of a 109
+bouncing you: normal is identical, and at flight school and Spain
+veterans one more pass in twelve fails to get you.
