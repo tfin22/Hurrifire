@@ -101,7 +101,19 @@ export interface FlightEnv {
   trimPath?: boolean;
   /** Arcade handling: more thrust, quicker controls, no cut-out, no spins (the player's choice). */
   arcade?: boolean;
+  /**
+   * The pilot's experience on this type, 0 (just converted) to 1 (an old
+   * hand); 0.5, the default, changes nothing. An old hand gets a little more
+   * out of the controls, flies closer to the stall without spinning, nurses a
+   * damaged aircraft and a hot engine, and is easier on fuel.
+   */
+  typeSkill?: number;
 }
+
+/** -0.5..0.5 around the neutral middle of experience on type. */
+const typeK = (env: FlightEnv) => clamp(env.typeSkill ?? 0.5, 0, 1) - 0.5;
+/** A damaged part (1 = sound) as an experienced pilot coaxes it, or a new one makes worse. */
+const nursed = (m: number, k: number) => (m >= 1 ? m : clamp(m + (1 - m) * TUNING.flight.typeNurse * 2 * k, 0, 1));
 
 export type FlightEventKind =
   | 'stall' | 'spin' | 'cutout' | 'cough' | 'fuelOut' | 'seize' | 'overspeed' | 'overG'
@@ -323,7 +335,7 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   const S = t.wingArea;
 
   // ---- Engine and thrust.
-  const powerFrac = engineStep(s, c, mods, dt, V, rng, !!env.arcade);
+  const powerFrac = engineStep(s, c, mods, dt, V, rng, !!env.arcade, typeK(env));
   const power = t.power * t.engines * powerFrac * altitudePowerFactor(t, s.pos.y) * (env.arcade ? TUNING.arcade.thrust : 1);
   const thrust = (t.propEff * power) / Math.max(V, t.thrustV0);
 
@@ -364,6 +376,10 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   // ---- Rotation: command model.
   const authority = clamp(qbar / T.qRef, 0.12, 1);
   const pilot = mods.pilot;
+  // Experience on type: a sharper hand on the controls, damaged ones coaxed.
+  const tk = typeK(env);
+  const hand = 1 + 2 * tk * T.typeHandling;
+  const elevator = nursed(mods.elevator, tk), aileron = nursed(mods.aileron, tk);
   const vs = stallSpeed(t, m, rho, s.flaps);
   // Path rotation rates: how fast the velocity vector is turning in body axes.
   let pathPitch = 0, pathYaw = 0;
@@ -406,12 +422,12 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   const stallLimit = pitchIn > T.stallStick && !env.stallGuard && !env.arcade ? T.overStall : T.softStall;
   alphaReq = clamp(alphaReq, -asEff * 0.95, asEff * stallLimit);
   const quick = env.arcade ? TUNING.arcade.pitch : 1;
-  const kA = t.pitchGain * authority * mods.elevator * (0.55 + 0.45 * pilot) * quick;
+  const kA = t.pitchGain * authority * elevator * (0.55 + 0.45 * pilot) * quick * hand;
   let qr = pathPitch + kA * (alphaReq - alpha);
   qr = clamp(qr, -T.maxPitchRate * quick, T.maxPitchRate * quick);
 
   // Roll.
-  let pCmd = c.roll * rollRateMax(t, V) * mods.aileron * (0.6 + 0.4 * pilot) * (env.arcade ? TUNING.arcade.roll : 1) + mods.aileronBias + mods.rollBias;
+  let pCmd = c.roll * rollRateMax(t, V) * aileron * (0.6 + 0.4 * pilot) * (env.arcade ? TUNING.arcade.roll : 1) * hand + mods.aileronBias + mods.rollBias;
   // Hands off the ailerons, the player's aircraft keeps its wings where they
   // were: let go nearly level and it rolls gently back to level (aileron trim
   // against the torque); let go in a proper turn and it holds the bank.
@@ -442,11 +458,11 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
     pCmd += s.spinDir * T.wingDrop * clamp((alpha - asEff) / 0.1, 0.3, 1);
     // Yawing while stalled develops into a spin.
     const yawing = Math.abs(s.r) > 0.35 || Math.abs(beta) > 0.1 || c.yaw * s.spinDir > 0.3;
-    if (yawing && alphaReq > asEff * 0.98 && !env.arcade) s.spin = Math.min(1, s.spin + dt * T.spinBuild);
+    if (yawing && alphaReq > asEff * 0.98 && !env.arcade) s.spin = Math.min(1, s.spin + dt * T.spinBuild * (1 - 2 * tk * T.typeSpin));
   }
   if (alphaReq < asEff * 0.9) {
     // Stick forward: recovery, quicker with opposite rudder.
-    s.spin = Math.max(0, s.spin - dt * (T.spinRecover * (0.25 + 0.75 * antiRudder)));
+    s.spin = Math.max(0, s.spin - dt * (T.spinRecover * (1 + 2 * tk * T.typeSpin) * (0.25 + 0.75 * antiRudder)));
   }
   if (s.spin > 0) {
     if (s.spin > 0.5 && !s.events.includes('spin') && s.spin - dt * T.spinBuild <= 0.5) s.events.push('spin');
@@ -516,7 +532,7 @@ function defaultTouchdown(info: TouchdownInfo): GroundResponse {
 }
 
 /** Engine, fuel and temperatures. Returns the delivered power fraction. */
-function engineStep(s: FlightState, c: FlightControls, mods: FlightMods, dt: number, V: number, rng: Rng, noCutout = false): number {
+function engineStep(s: FlightState, c: FlightControls, mods: FlightMods, dt: number, V: number, rng: Rng, noCutout = false, tk = 0): number {
   const t = s.type;
   const T = TUNING.flight;
   s.throttle = clamp(c.throttle, 0, 1);
@@ -560,7 +576,7 @@ function engineStep(s: FlightState, c: FlightControls, mods: FlightMods, dt: num
     frac = (0.06 + 0.94 * s.throttle) * engineHealth * s.surge;
     if (s.boostOn) frac *= t.boostMul;
     if (s.cutoutT > 0) frac *= 0.05;
-    const burn = t.fuelBurn * (0.2 + 0.8 * frac) * (s.boostOn ? 1.35 : 1);
+    const burn = t.fuelBurn * (0.2 + 0.8 * frac) * (s.boostOn ? 1.35 : 1) * (1 - 2 * tk * T.typeEconomy);
     s.fuel = Math.max(0, s.fuel - burn * dt);
   }
   // RPM (constant-speed unit holds it when running) and boost gauge.
@@ -568,7 +584,8 @@ function engineStep(s: FlightState, c: FlightControls, mods: FlightMods, dt: num
   s.rpm += (targetRpm * (s.cutoutT > 0 ? 0.85 : 1) - s.rpm) * Math.min(1, dt * 2.5);
   s.boostLb = running ? -4 + 10.25 * s.throttle + (s.boostOn ? 5.75 : 0) : -6;
   // Temperatures: heat from power, cooling with airflow.
-  const cooling = (0.25 + Math.min(1.2, V / 90)) * mods.coolant;
+  // An old hand nurses a holed radiator (throttle back, radiator flap open, nose down); a new one cooks it.
+  const cooling = (0.25 + Math.min(1.2, V / 90)) * nursed(mods.coolant, tk);
   const base = s.boostOn ? frac / t.boostMul : frac;
   const heat = running ? 26 * base * base + (s.boostOn ? 12 : 0) : 0;
   s.radTemp += (heat - (s.radTemp - 60) * cooling * 0.6) * dt * T.tempRate;

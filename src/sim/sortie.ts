@@ -64,6 +64,8 @@ export interface SortieSpec {
   assist: boolean;
   /** Pre-war tight vics, or the looser pairs the squadron learns to fly. */
   formation?: 'vic' | 'pairs';
+  /** Campaign: the player's experience on the type, 0 (just converted) to 1 (an old hand). */
+  typeSkill?: number;
   /** Spawn the player at this height and position for 'air' starts. */
   airStart?: { pos: Vec3; heading: number };
   /** Other squadrons up as well (default on). */
@@ -241,6 +243,7 @@ export class Sortie {
     const T = TUNING.sortie;
     this.primeNeed = T.primeBase + (spec.hour < 9 || spec.month >= 10 ? 1 : 0) + (this.engineRng.chance(0.3) ? 1 : 0);
     const w = (this.world = new World(spec.seed, map));
+    w.playerTypeSkill = spec.typeSkill ?? 0.5;
     const wx = spec.weather;
     w.weather.wind.copy(windVector(wx));
     w.weather.haze = wx.haze;

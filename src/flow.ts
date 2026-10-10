@@ -10,7 +10,7 @@ import { TitleScreen } from './screens/menu';
 import { SortieScreen } from './screens/sortieScreen';
 import { arcadeSpec, Sortie, SortieSpec } from './sim/sortie';
 import { QuickCombatScreen } from './screens/quickCombat';
-import { CampaignBoardScreen, CampaignEndScreen, CampaignStartScreen, RosterScreen } from './screens/campaign';
+import { CampaignBoardScreen, CampaignEndScreen, CampaignStartScreen, PostingsScreen, RosterScreen } from './screens/campaign';
 import { abortedSortie, applyAirfieldState, applySortie, nextSortieSpec } from './campaign/campaign';
 import type { SortieResult } from './sim/sortie';
 import { ReplayScreen } from './screens/replay';
@@ -62,6 +62,7 @@ export class Flow {
       fly: () => this.campaignSortie(),
       roster: () => this.app.setScreen(new RosterScreen(this.app, s, () => this.board())),
       logbook: () => this.app.setScreen(new LogbookScreen(this.app, g, () => this.board())),
+      postings: () => this.app.setScreen(new PostingsScreen(this.app, s, () => this.board(), () => g.saveCampaign())),
       quit: () => { g.saveCampaign(); this.toTitle(); },
       save: () => g.saveCampaign(),
     }));

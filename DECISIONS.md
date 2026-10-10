@@ -1241,3 +1241,76 @@ Only the raid you join flies on. Other raids and squadrons, and the
 clock, don't move.
 
 The tunables are `arcade.jumpMaxAhead` and `jumpFuelRate`.
+
+## The career: experience on type, and postings
+
+Playtest: "Is it possible to build up skill on type (if you fly
+Hurricanes in career mode you get better, nurse damage more, a bump in
+manoeuvres)? And can there be different postings? Conversion to other
+types? Or your squadron moves as well. Flying from Biggin Hill is a long
+way away."
+
+### Experience on type
+You keep the hours you fly on each type. A new campaign starts with 12
+hours from OTU. A conversion course adds 8 hours on the new type.
+Experience runs from 0 to 1, and you are an old hand at 50 hours (about a
+full campaign). The levels show on the board: NEW, FAMILIAR (12 hours),
+AT HOME (25) and OLD HAND (40). The news tells you as you reach each one.
+
+In the flight model (`FlightEnv.typeSkill`, the player only), 0.5 is
+neutral, so quick combat, scramble and escort fly exactly as before. A
+pilot new to the type is a little worse than that, and an old hand a
+little better:
+- **Controls:** pitch and roll response ±8%.
+- **The edge of the stall:** spins develop more slowly and recover more
+  quickly, ±30%.
+- **Nursing damage:** a shot-up elevator or aileron, or a holed radiator,
+  gets back up to 30% of what it lost. A new pilot loses up to 30% more.
+  With a holed radiator at full throttle, an old hand's engine lasts over
+  10% longer before it seizes, and a new pilot's goes sooner.
+- **Fuel:** ±4%.
+
+These are deliberately small. The aircraft are the same, and the pilot
+gets the last bit out of them.
+
+### Where the squadron flies from
+Each sector station has the satellite and forward fields its squadrons
+used:
+- Biggin Hill: Hawkinge, Lympne, West Malling, Gravesend
+- Kenley: Croydon, Redhill, Hawkinge
+- Hornchurch: Manston, Rochford
+- North Weald: Rochford, Stapleford Tawney
+- Tangmere: Westhampnett
+
+The board has a new menu line to choose the field. Forward fields
+(Hawkinge, Lympne, Manston) are nearer the coast and the raids, but
+they're caught on the ground more often (45% of sorties in the airfields
+phase against 30% at a sector station, and 15% in the Channel battles).
+They're bombed off-screen too. When the sector station is bombed out,
+the squadron moves to a satellite on its own, and back once the station
+is open again.
+
+### Postings
+POSTINGS on the board:
+- **Ask Group for a posting** to a squadron at any sector station, on
+  either type.
+  - The other type means 3 days converting first. The same type means a
+    day travelling.
+  - The squadron is new: a fresh roster, a new callsign, full strength.
+  - Rank goes with you: a Flight Lieutenant gets B Flight, a Squadron
+    Leader the squadron.
+- **Commanding (Squadron Leader),** you can move your squadron, pilots
+  and all, to another station instead. That costs a day.
+- **Limits:** not while you're in hospital, and not within 10 days of
+  your last move. The screen says why when it's refused.
+- **While you're away,** the days pass off-screen as they do in hospital.
+- **Your record:** the postings screen lists your hours on each type and
+  the squadrons you've served with.
+
+Older saves still load. Hours on type are worked out from the minutes
+already flown, all on the squadron's type.
+
+The tunables are `flight.typeHandling`, `typeSpin`, `typeNurse` and
+`typeEconomy`, and `campaign.otuHours`, `conversionHours`,
+`oldHandHours`, `conversionDays`, `moveDays`, `postingGapDays` and
+`forwardAttack`.

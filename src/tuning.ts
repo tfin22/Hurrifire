@@ -69,6 +69,15 @@ export const TUNING = {
     wingDrop: 1.4,
     spinBuild: 0.9,
     spinRecover: 1.2,
+    /**
+     * Experience on type, from just converted to an old hand (FlightEnv.typeSkill):
+     * control response ±8%, spins develop and recover ±30%, a damaged part
+     * (controls, radiator) gets back ±30% of what it lost, fuel ±4%.
+     */
+    typeHandling: 0.08,
+    typeSpin: 0.3,
+    typeNurse: 0.3,
+    typeEconomy: 0.04,
     spinRoll: 2.6,
     spinYaw: 1.1,
     /** Load factor below which a carburetted Merlin cuts out. */
@@ -307,6 +316,17 @@ export const TUNING = {
     vacancySorties: 5,
     /** Days in hospital when wounded. */
     woundedDays: [4, 14] as [number, number],
+    /** Hours on type: from OTU at the start, from a conversion course, and to be an old hand (experience 1). */
+    otuHours: 12,
+    conversionHours: 8,
+    oldHandHours: 50,
+    /** Days away converting to a new type, or joining a new squadron (or moving it) on the same type. */
+    conversionDays: 3,
+    moveDays: 1,
+    /** Days between one posting or squadron move and the next. */
+    postingGapDays: 10,
+    /** Chance a forward field (Hawkinge, Lympne, Manston) is attacked as the squadron scrambles, by phase. */
+    forwardAttack: { channel: 0.15, airfields: 0.45, london: 0.1, jabo: 0.25 } as Record<string, number>,
   },
 
   escort: {
