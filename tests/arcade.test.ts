@@ -9,6 +9,7 @@ import { WorldObjects } from '../src/content/world/objects';
 import { arcadeSpec, generateRaids, Sortie, SortieSpec } from '../src/sim/sortie';
 import { generateWeather } from '../src/sim/weather';
 import { Bullet } from '../src/sim/ballistics';
+import { isFrance } from '../src/content/world/describe';
 import type { ControlFrame } from '../src/input/input';
 import { TUNING } from '../src/tuning';
 
@@ -140,5 +141,29 @@ describe('arcade with a real take-off', () => {
     // Once only.
     s.step(frame(['jumpRaid']));
     expect(s.prompts.join(' ')).toMatch(/ALREADY/);
+  });
+
+  it('JUMP TO RAID goes to where you\'d meet it, both flying on: never over France, the raid moved on, fuel used', () => {
+    for (let seed = 30; seed < 42; seed++) {
+      const s = new Sortie(arcadeSpec(spec(seed), true), map, objects);
+      const home = s.base.pos;
+      s.player.fs.setAirborne(new Vec3(home.x, home.y + 300, home.z), 0, 110);
+      s.step(frame());
+      const r = s.world.raids[0];
+      const from = r.plot.clone(), fuel = s.player.fs.fuel;
+      s.step(frame(['jumpRaid']));
+      expect(s.jumpedToRaid, `seed ${seed} ${r.spec.targetName} ${s.prompts.slice(-1)}`).toBe(true);
+      // The raid flew on (towards its target, or past it if we couldn't get there first), and we met it short of France.
+      expect(Math.hypot(r.plot.x - from.x, r.plot.z - from.z), `seed ${seed}`).toBeGreaterThan(5000);
+      const overFrance = (v: Vec3) => isFrance(v.x, v.z) && map.surfaceAt(v.x, v.z) !== 'sea';
+      expect(overFrance(s.player.pos), `seed ${seed}`).toBe(false);
+      expect(overFrance(r.plot), `seed ${seed}`).toBe(false);
+      // The trip: a climb to its height and the flight out, paid for in fuel.
+      expect(s.player.fs.fuel).toBeLessThan(fuel - s.player.type.fuelCapacity * 0.05);
+      expect(s.prompts.join(' ')).toMatch(/MIN LATER|ON ITS WAY HOME/);
+      // Still the arcade picture: just ahead of it, above, turned in.
+      const A = TUNING.arcade;
+      expect(Math.hypot(s.player.pos.x - r.plot.x, s.player.pos.z - r.plot.z)).toBeLessThan(Math.hypot(A.startAhead, A.startAside) + 500);
+    }
   });
 });

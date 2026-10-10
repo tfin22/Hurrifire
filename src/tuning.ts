@@ -506,6 +506,10 @@ export const TUNING = {
     startAbove: 800,
     /** JUMP TO RAID (after a real take-off) needs this much height under you (m). */
     jumpMinAgl: 100,
+    /** It goes to where you'd meet the raid, both flying on, but never more than this far ahead (s). */
+    jumpMaxAhead: 1800,
+    /** Fuel used getting there, as a fraction of full-power burn: climbing and cruising. */
+    jumpFuelRate: 0.75,
   },
 
   /** The docking computer: jump to final approach after a homing. */

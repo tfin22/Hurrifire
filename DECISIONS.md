@@ -1203,3 +1203,41 @@ can see where you are:
 Starting up has its own random stream, so it shifts nothing else in a
 sortie. The tunables are `sortie.primeBase`, `primeFlood`, `catchChance`,
 `catchChanceShort`, `catchAfter` and `assistStep`.
+
+## Jump to raid: where you'd meet it, not where it is
+
+Playtest: "When jumping to raid it should jump to where the raid would be
+after flying there from both sides. Not teleported to France."
+
+Before, JUMP TO RAID put the squadron next to the raid wherever it was at
+that moment, which, just after take-off, was often still over France.
+Now:
+- **Where you'd meet.** It works out where the squadron would meet the
+  raid if both flew on. The squadron climbs at 11 m/s and cruises at
+  105 m/s (the same as the other squadrons nobody can see) from where you
+  are. The raid flies on along its route.
+- **That time passes.** The raid flies on that long, bombing its target
+  if it gets there first. Each aircraft in the squadron uses that much
+  fuel: 75% of full-power burn, never leaving less than 10%. The prompt
+  says how long it took ("RAID AHEAD - 12 MIN LATER").
+- **Never over France.** Neither the raid nor the squadron may be over
+  French soil at the meeting point; the sea off it is fair game. (The
+  rough `isFrance` box takes in most of the Strait of Dover, so it's
+  paired with the map's sea.)
+- **If the controller's raid can't be caught** short of France, another
+  raid that can is taken instead.
+- **If no raid can be caught** (a raid on the coast, a long way from your
+  field), the squadron is put a minute short of the French coast on the
+  raid's way home, with "CAUGHT IT ON ITS WAY HOME". It's a little
+  generous, but better than an empty sky.
+- **On the way home,** the squadron is put behind the raid, chasing it,
+  rather than ahead of it on the French side.
+
+Across 180 jumps (three phases, four bases), none was over France. 140
+met the raid on its way in, 10 to 23 minutes later, and 40 caught it on
+its way home. On average the jump used 20% of the fuel.
+
+Only the raid you join flies on. Other raids and squadrons, and the
+clock, don't move.
+
+The tunables are `arcade.jumpMaxAhead` and `jumpFuelRate`.

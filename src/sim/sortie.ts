@@ -592,10 +592,13 @@ export class Sortie {
   }
 
   /** The raid to jump to: the controller's, or the first still coming in. */
+  private joinable(r: Raid): boolean {
+    return r.started && (!r.spawned || r.planes.some((q) => q.alive)) && (r.phase === 'inbound' || r.phase === 'bombRun');
+  }
+
   private raidToJoin(): Raid | null {
-    const live = (r: Raid) => r.started && (!r.spawned || r.planes.some((q) => q.alive)) && (r.phase === 'inbound' || r.phase === 'bombRun');
     const t = this.controller.targetRaid;
-    return t && live(t) ? t : this.world.raids.find(live) ?? null;
+    return t && this.joinable(t) ? t : this.world.raids.find((r) => this.joinable(r)) ?? null;
   }
 
   /** Why the squadron can't jump to the raid now, or null if it can. */
@@ -609,22 +612,75 @@ export class Sortie {
   }
 
   /**
-   * Arcade, after a real take-off: the whole squadron jumps to the raid,
-   * ahead of it on its track, off to one side and above, turned in towards
-   * it: the same picture as the arcade air start, wherever the raid now is.
+   * Arcade's picture of a raid: ahead of it on its track, off to one side and
+   * above, turned in towards it. Once it's on its way home, behind it instead,
+   * on our side, chasing it.
+   */
+  private static jumpPlace(at: Vec3, dir: Vec3, alt: number, homeward: boolean): { pos: Vec3; hdg: number } {
+    const A = TUNING.arcade;
+    const k = homeward ? -1 : 1;
+    const pos = new Vec3(at.x + k * dir.x * A.startAhead - dir.z * A.startAside, alt + A.startAbove, at.z + k * dir.z * A.startAhead + dir.x * A.startAside);
+    return { pos, hdg: Math.atan2(at.x - pos.x, at.z - pos.z) };
+  }
+
+  /**
+   * Seconds until the squadron, climbing and flying from where it is, could
+   * be in arcade's place by the raid, the raid flying on along its route;
+   * never over France (the sea off it is fair game). Can't be caught this side of the coast: the last
+   * moment before it gets there, and how far short we'd be (s).
+   */
+  /** Over French soil (the sea off it doesn't count). */
+  private overFrance(v: Vec3): boolean {
+    return isFrance(v.x, v.z) && this.map.surfaceAt(v.x, v.z) !== 'sea';
+  }
+
+  private meetingTime(r: Raid): { t: number; late: number } | null {
+    const A = TUNING.arcade, S = TUNING.sky, me = this.player.pos;
+    const climb = Math.max(0, r.alt + A.startAbove - me.y) / S.climbRate;
+    let best: { t: number; late: number } | null = null;
+    for (let t = 0; t <= A.jumpMaxAhead; t += 5) {
+      const at = r.predict(t);
+      const { pos } = Sortie.jumpPlace(at.pos, at.dir, r.alt, at.homeward);
+      if (this.overFrance(pos) || this.overFrance(at.pos)) continue;
+      const late = Math.max(climb, Math.hypot(pos.x - me.x, pos.z - me.z) / S.cruise) - t;
+      if (late <= 0) return { t, late: 0 };
+      // Late, caught just before it gets home: leave it a minute short of the coast.
+      const then = r.predict(t + 60).pos;
+      if (!this.overFrance(then) && (!best || late <= best.late)) best = { t, late };
+    }
+    return best;
+  }
+
+  /**
+   * Arcade, after a real take-off: the whole squadron jumps to where it
+   * would meet the raid, both flying on. The raid moves on that long along
+   * its route, the squadron uses that much fuel, and it arrives in arcade's
+   * place by the raid. The controller's raid if it can be caught short of
+   * France, else the next one that can.
    */
   private jumpToRaid(): void {
     const why = this.raidJumpRefusal();
     if (why) { this.prompts.push(why); return; }
     const A = TUNING.arcade;
-    const r = this.raidToJoin()!;
+    // The controller's raid if we can meet it this side of France, else the next one we can;
+    // failing that, whichever we'd be least late for, caught just before it gets home.
+    const first = this.raidToJoin()!;
+    let r: Raid | null = null, t = 0, late = Infinity;
+    for (const c of [first, ...this.world.raids.filter((x) => x !== first && this.joinable(x))]) {
+      const m = c.spawned ? { t: 0, late: 0 } : this.meetingTime(c);
+      if (m && m.late < late) { r = c; t = m.t; late = m.late; }
+      if (late === 0) break;
+    }
+    if (!r) { this.prompts.push('NO RAID THIS SIDE OF FRANCE'); return; }
+    r.fastForward(t, this.time);
+    for (const q of this.formation) {
+      if (q.status === 'flying') q.fs.fuel = Math.max(q.type.fuelCapacity * 0.1, q.fs.fuel - q.type.fuelBurn * A.jumpFuelRate * t);
+    }
     const plot = r.plot;
-    let dx = r.vel.x, dz = r.vel.z;
-    if (Math.hypot(dx, dz) < 1) { dx = r.spec.target.x - plot.x; dz = r.spec.target.z - plot.z; }
-    const l = Math.hypot(dx, dz) || 1;
-    dx /= l; dz /= l;
-    const pos = new Vec3(plot.x + dx * A.startAhead - dz * A.startAside, r.alt + A.startAbove, plot.z + dz * A.startAhead + dx * A.startAside);
-    const hdg = Math.atan2(plot.x - pos.x, plot.z - pos.z);
+    let dir = new Vec3(r.vel.x, 0, r.vel.z);
+    if (dir.len() < 1) dir = new Vec3(r.spec.target.x - plot.x, 0, r.spec.target.z - plot.z);
+    dir.scale(1 / (dir.len() || 1));
+    const { pos, hdg } = Sortie.jumpPlace(plot, dir, r.alt, r.phase === 'outbound');
     const fx = Math.sin(hdg), fz = Math.cos(hdg), rx = Math.cos(hdg), rz = -Math.sin(hdg);
     const leader = this.leader;
     this.formation.forEach((q, i) => {
@@ -637,7 +693,7 @@ export class Sortie {
     });
     this.jumpedToRaid = true;
     this.controller.say(this.time, `${this.spec.squadron} Leader: Bandits ahead. Going in.`, 'player', false);
-    this.prompts.push('RAID AHEAD');
+    this.prompts.push(late > 0 ? 'CAUGHT IT ON ITS WAY HOME' : t >= 60 ? `RAID AHEAD - ${Math.round(t / 60)} MIN LATER` : 'RAID AHEAD');
   }
 
   /** The docking computer: straight onto finals for the homing field. */
