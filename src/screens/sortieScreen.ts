@@ -20,6 +20,7 @@ import type { WorldObjects } from '../content/world/objects';
 import type { Ship } from '../render/worldLayer';
 import type { RTMessage } from '../sim/controller';
 import type { Raid } from '../sim/raid';
+import type { OtherSquadron } from '../sim/squadrons';
 
 /** What the screen needs of a sortie: the RAF scramble, or the 109 escort. */
 export interface FlownSortie {
@@ -46,6 +47,8 @@ export interface FlownSortie {
   rtOptions?(): { cmd: SimCmd; label: string }[];
   /** The docking computer (jump to finals and autoland), where the sortie has one. */
   readonly docking?: { readonly active: boolean };
+  /** Other squadrons of ours that are up (for the map). */
+  readonly others?: readonly OtherSquadron[];
 }
 import { TUNING } from '../tuning';
 import { FlightScreen } from './flight';
@@ -142,7 +145,7 @@ export class SortieScreen extends FlightScreen {
   tick(): void {
     super.tick();
     const so = this.sortie;
-    if (this.world.tick % 50 === 0) this.plot.update(this.world.raids, this.world.time);
+    if (this.world.tick % 50 === 0) this.plot.update(this.world.raids, this.world.planes, so.others ?? [], this.player.side, this.world.time);
     // New R/T messages. Urgent ones drop time compression as soon as they're sent.
     const log = so.controller.log;
     for (; this.rtHeard < log.length; this.rtHeard++) if (log[this.rtHeard].urgent) this.timeIdx = 0;

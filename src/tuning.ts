@@ -401,6 +401,22 @@ export const TUNING = {
     retireRange: 30000,
   },
 
+  /** The ops-room map. */
+  map: {
+    /** How often the plot is renewed (s). */
+    every: 30,
+    /** Plot errors (m): radar for a raid nobody has met, the Observer Corps for hostiles in sight, R/T fixes for ours. */
+    radarError: 2500,
+    observerError: 1200,
+    fixError: 500,
+    /** Anything within this of each other is one counter on the table (m): about a counter's width. */
+    groupRange: 7000,
+    /** A raid gone home is taken off within this of where it came from (m). */
+    homeGone: 3000,
+    /** Ours are drawn with a line to their raid while it's further away than this (m). */
+    vectorLine: 5000,
+  },
+
   claims: {
     /** A target you hit hard and saw smoking/diving away gets claimed as destroyed this often. */
     overclaimSmoking: 0.6,

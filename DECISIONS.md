@@ -1127,3 +1127,36 @@ In the browser at ×4, a hands-off Hurricane at full throttle held
 The tunables are `flight.trimLevelSnap`, `trimHoldGain`, `trimMaxCorr`,
 `trimDiveRelax`, `trimProtect`, `trimProtectRate`, `trimLevelBank`,
 `trimBankGain` and `trimBankRate`. The speed-seeking ones are gone.
+
+## The map shows the whole picture
+
+Before, the map showed only the raid plots. Other squadrons of ours and,
+once a raid was in sight, how it had broken up were missing. Now it is
+the ops-room table:
+- **Hostiles (red).** A raid nobody has met is its radar plot: estimated
+  strength ("17+") and reported height in angels ("A15"), with the
+  radar's errors in both. Once a raid is in sight, the Observer Corps
+  reports each group in it: the bombers, the escort, stragglers, and 109s
+  chasing about.
+- **Ours (blue).** Every other squadron that's up: callsign and
+  strength, with a dotted line to the raid it was sent after while it's
+  still on its way. A big wing is one "WING" counter. Squadrons off the
+  ground show as soon as they're airborne, and they leave the map once
+  they've landed.
+- **Going home: black.** A raid or group heading home is a black counter.
+  It comes off the table once it's back over France.
+- **Flying a 109,** it's the other way about: the raids are blue, and the
+  RAF fighters in sight are red.
+
+The plot is renewed every 30 s, not continuously, and each counter
+carries a fixed error that changes at each renewal (radar 2.5 km,
+Observer Corps 1.2 km, R/T fixes 0.5 km). It's the ops room's picture,
+not the truth.
+
+At this scale a counter covers about 7 km, so anything closer together
+than that is one counter, as it would be on a crowded table. That keeps
+the map readable in the middle of a big fight. A counter that would land
+on another is moved alongside it, with a short line back to where it
+really is.
+
+The tunables are under `map` in `tuning.ts`.
