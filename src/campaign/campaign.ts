@@ -245,14 +245,21 @@ export function minutesOnType(s: CampaignState, type: CampaignType = s.aircraft)
   return type === s.aircraft ? TUNING.campaign.otuHours * 60 + s.player.minutes : 0;
 }
 
-/** Experience on a type for the flight model: 0 just converted, 1 an old hand. */
+/**
+ * Experience on a type for the flight model: 0 green (fresh from OTU or a
+ * conversion course), 0.5 (no edge either way) as you become familiar with
+ * her, 1 skilled.
+ */
 export function typeSkill(s: CampaignState, type: CampaignType = s.aircraft): number {
-  return Math.min(1, minutesOnType(s, type) / 60 / TUNING.campaign.oldHandHours);
+  const T = TUNING.campaign.typeHours;
+  return Math.max(0, Math.min(1, (minutesOnType(s, type) / 60 - T.zero) / (T.full - T.zero)));
 }
 
-export const TYPE_LEVELS = ['NEW', 'FAMILIAR', 'AT HOME', 'OLD HAND'] as const;
-export function typeLevel(skill: number): number {
-  return skill >= 0.8 ? 3 : skill >= 0.5 ? 2 : skill >= 0.25 ? 1 : 0;
+export const TYPE_LEVELS = ['GREEN', 'NEW', 'FAMILIAR', 'SKILLED'] as const;
+/** 0 green, 1 new, 2 familiar, 3 skilled, by hours on the type. */
+export function typeLevel(s: CampaignState, type: CampaignType = s.aircraft): number {
+  const T = TUNING.campaign.typeHours, h = minutesOnType(s, type) / 60;
+  return h >= T.skilled ? 3 : h >= T.familiar ? 2 : h >= T.new ? 1 : 0;
 }
 
 // ------------------------------------------------------------------ where the squadron flies from
@@ -426,11 +433,11 @@ export function applySortie(s: CampaignState, r: SortieResult): string[] {
   // The player.
   P.sorties++;
   P.sortiesAtRank++;
-  const level = typeLevel(typeSkill(s));
+  const level = typeLevel(s);
   P.typeMinutes = { [s.aircraft]: minutesOnType(s), ...P.typeMinutes };
   P.typeMinutes[s.aircraft] = (P.typeMinutes[s.aircraft] ?? 0) + r.durationMin;
   P.minutes += r.durationMin;
-  if (typeLevel(typeSkill(s)) > level) news.push(NEWS.typeLevel[typeLevel(typeSkill(s))](TYPE_NAMES[s.aircraft]));
+  if (typeLevel(s) > level) news.push(NEWS.typeLevel[typeLevel(s)](TYPE_NAMES[s.aircraft]));
   P.fatigue = Math.min(1, P.fatigue + T.fatiguePerSortie);
   for (const c of r.claims) if (c.allowed !== 'none') P[c.allowed]++;
   if (o.pilot === 'wounded' && !s.ended) {

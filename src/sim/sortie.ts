@@ -64,7 +64,7 @@ export interface SortieSpec {
   assist: boolean;
   /** Pre-war tight vics, or the looser pairs the squadron learns to fly. */
   formation?: 'vic' | 'pairs';
-  /** Campaign: the player's experience on the type, 0 (just converted) to 1 (an old hand). */
+  /** Campaign: the player's experience on the type, 0 (green) to 1 (skilled). */
   typeSkill?: number;
   /** Spawn the player at this height and position for 'air' starts. */
   airStart?: { pos: Vec3; heading: number };

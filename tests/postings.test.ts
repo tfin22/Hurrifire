@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applySortie, CampaignState, currentDoy, fieldChoices, flyingFrom, formationFor, minutesOnType, moveSquadron, newCampaign,
-  nextDay, nextSortieSpec, postingRefusal, postTo, SECTOR_FIELDS, setFlyFrom, typeSkill,
+  nextDay, nextSortieSpec, postingRefusal, postTo, SECTOR_FIELDS, setFlyFrom, typeLevel, typeSkill,
 } from '../src/campaign/campaign';
 import { worldMap } from '../src/content/world/map';
 import { WorldObjects } from '../src/content/world/objects';
@@ -29,7 +29,8 @@ describe('experience on type', () => {
   it('starts with the OTU hours, grows with every sortie, and goes to the flight model', () => {
     const s = newCampaign(1, opts);
     expect(minutesOnType(s)).toBe(T.otuHours * 60);
-    expect(typeSkill(s)).toBeCloseTo(T.otuHours / T.oldHandHours);
+    expect(typeLevel(s)).toBe(0);
+    expect(typeSkill(s)).toBeCloseTo((T.otuHours - T.typeHours.zero) / (T.typeHours.full - T.typeHours.zero));
     const before = typeSkill(s);
     applySortie(s, result(s, 90));
     expect(minutesOnType(s)).toBe(T.otuHours * 60 + 90);
@@ -37,13 +38,22 @@ describe('experience on type', () => {
     expect(nextSortieSpec(s, map, { convergenceM: 250, assist: true }).typeSkill).toBeCloseTo(typeSkill(s));
   });
 
-  it('says so as you get to know her, and tops out as an old hand', () => {
+  it('green for a while, then new, familiar and skilled, saying so each time', () => {
     const s = newCampaign(2, opts);
     const news: string[] = [];
-    for (let i = 0; i < 60 && !s.ended; i++) news.push(...applySortie(s, result(s, 75)));
+    const at: number[] = [];
+    for (let i = 1; i <= 60 && !s.ended; i++) {
+      const was = typeLevel(s);
+      news.push(...applySortie(s, result(s, 60)));
+      if (typeLevel(s) > was) at.push(i);
+    }
+    // An hour a sortie: green for the first eight, new for fifteen more.
+    expect(at).toEqual([T.typeHours.new - T.otuHours, T.typeHours.familiar - T.otuHours, T.typeHours.skilled - T.otuHours]);
+    expect(at[0]).toBeGreaterThanOrEqual(8);
     expect(news.some((n) => /getting the feel of the Hurricane/.test(n))).toBe(true);
-    expect(news.some((n) => /at home in the Hurricane/.test(n))).toBe(true);
-    expect(news.some((n) => /old hand on the Hurricane/.test(n))).toBe(true);
+    expect(news.some((n) => /familiar with the Hurricane/.test(n))).toBe(true);
+    expect(news.some((n) => /skilled on the Hurricane/.test(n))).toBe(true);
+    // No edge either way about as you become familiar; the full edge a little after skilled.
     expect(typeSkill(s)).toBe(1);
   });
 
@@ -125,7 +135,8 @@ describe('postings', () => {
     expect(s.roster.filter((p) => p.role === 'CO')).toHaveLength(1);
     expect(minutesOnType(s, 'spitfire')).toBe(T.conversionHours * 60);
     expect(minutesOnType(s, 'hurricane')).toBe(T.otuHours * 60);
-    expect(typeSkill(s)).toBeLessThan(0.25);
+    expect(typeLevel(s)).toBe(0);
+    expect(typeSkill(s)).toBe(0);
     expect(s.news.join(' ')).toMatch(/conversion/);
     expect(s.player.awayUntil).toBeUndefined();
     expect(s.served?.map((x) => x.home)).toEqual(['Biggin Hill', 'Hornchurch']);

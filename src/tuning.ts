@@ -316,10 +316,15 @@ export const TUNING = {
     vacancySorties: 5,
     /** Days in hospital when wounded. */
     woundedDays: [4, 14] as [number, number],
-    /** Hours on type: from OTU at the start, from a conversion course, and to be an old hand (experience 1). */
+    /** Hours on type from OTU at the start, and from a conversion course. */
     otuHours: 12,
     conversionHours: 8,
-    oldHandHours: 50,
+    /**
+     * Hours on type: NEW, FAMILIAR and SKILLED from these (GREEN before);
+     * the flight model's edge runs from none at `zero` (worse than average)
+     * to full at `full` (better), neutral half way, about as you become familiar.
+     */
+    typeHours: { new: 20, familiar: 35, skilled: 55, zero: 10, full: 60 },
     /** Days away converting to a new type, or joining a new squadron (or moving it) on the same type. */
     conversionDays: 3,
     moveDays: 1,

@@ -57,10 +57,10 @@ export const NEWS = {
   youWounded: (days: number) => `You are in hospital for ${days} days. The squadron fights on without you.`,
   youBack: 'You are passed fit and back on the squadron.',
   typeLevel: [
-    (t: string) => `You are new on the ${t}.`,
+    (t: string) => `You are green on the ${t}.`,
     (t: string) => `You're getting the feel of the ${t}: she does what you ask now, most of the time.`,
-    (t: string) => `You're at home in the ${t}. You can feel the edge of the stall through the seat, and fly closer to it.`,
-    (t: string) => `An old hand on the ${t}. You know what she'll take, and how to nurse her home when she's been hit.`,
+    (t: string) => `You're familiar with the ${t} now. You can feel the edge of the stall through the seat, and fly closer to it.`,
+    (t: string) => `You're skilled on the ${t}. You know what she'll take, and how to nurse her home when she's been hit.`,
   ],
   posted: (sqn: string, home: string) => `You are posted to ${sqn} Squadron at ${home}. A day on the train with your kit.`,
   postedConvert: (sqn: string, home: string, type: string, days: number) => `You are posted to ${sqn} Squadron at ${home}, on ${type}s. ${days} days of conversion first: circuits, a cross-country, and some aerobatics to get to know her.`,

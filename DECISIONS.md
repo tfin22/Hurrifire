@@ -1252,22 +1252,32 @@ way away."
 
 ### Experience on type
 You keep the hours you fly on each type. A new campaign starts with 12
-hours from OTU. A conversion course adds 8 hours on the new type.
-Experience runs from 0 to 1, and you are an old hand at 50 hours (about a
-full campaign). The levels show on the board: NEW, FAMILIAR (12 hours),
-AT HOME (25) and OLD HAND (40). The news tells you as you reach each one.
+hours from OTU. A conversion course gives 8 hours on the new type. The
+board shows four levels:
 
-In the flight model (`FlightEnv.typeSkill`, the player only), 0.5 is
-neutral, so quick combat, scramble and escort fly exactly as before. A
-pilot new to the type is a little worse than that, and an old hand a
-little better:
+| Level | Hours on type | About |
+|---|---|---|
+| GREEN | under 20 | the first eight sorties of a career |
+| NEW | 20 | fifteen sorties more |
+| FAMILIAR | 35 | twenty more |
+| SKILLED | 55 | |
+
+The news tells you as you reach each one. (It was four levels by
+fraction of 50 hours at first. Playtest: "Got to be new for a while":
+you went from the bottom level to the next after one sortie.)
+
+In the flight model (`FlightEnv.typeSkill`, the player only), experience
+runs from 0 at 10 hours to 1 at 60. It's 0.5 (neutral) at 35 hours, as
+you become familiar. Quick combat, scramble and escort fly at 0.5,
+exactly as before. A green pilot is a little worse than that, and a
+skilled one a little better:
 - **Controls:** pitch and roll response ±8%.
 - **The edge of the stall:** spins develop more slowly and recover more
   quickly, ±30%.
 - **Nursing damage:** a shot-up elevator or aileron, or a holed radiator,
-  gets back up to 30% of what it lost. A new pilot loses up to 30% more.
-  With a holed radiator at full throttle, an old hand's engine lasts over
-  10% longer before it seizes, and a new pilot's goes sooner.
+  gets back up to 30% of what it lost. A green pilot loses up to 30% more.
+  With a holed radiator at full throttle, a skilled pilot's engine lasts
+  over 10% longer before it seizes, and a green pilot's goes sooner.
 - **Fuel:** ±4%.
 
 These are deliberately small. The aircraft are the same, and the pilot
@@ -1312,5 +1322,5 @@ already flown, all on the squadron's type.
 
 The tunables are `flight.typeHandling`, `typeSpin`, `typeNurse` and
 `typeEconomy`, and `campaign.otuHours`, `conversionHours`,
-`oldHandHours`, `conversionDays`, `moveDays`, `postingGapDays` and
+`typeHours`, `conversionDays`, `moveDays`, `postingGapDays` and
 `forwardAttack`.

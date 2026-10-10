@@ -5,7 +5,7 @@ import type { App, Screen } from '../app';
 import {
   campaignDate, campaignPhase, campaignScore, CampaignState, CampaignType, currentDoy, dayWeather, fieldChoices, fitPilots, flyingFrom, isForward,
   minutesOnType, moveSquadron, pilotName, playerName, postingRefusal, postTo, RosterPilot, SECTOR_STATIONS, setFlyFrom, sortiesToday, TYPE_LEVELS,
-  typeLevel, typeSkill,
+  typeLevel,
 } from '../campaign/campaign';
 import { CAREER_END, DAY_NOTES, PHASE_NAMES, RANK_NAMES } from '../content/text/campaign';
 import { PILOT_NAMES } from '../content/text/briefing';
@@ -210,7 +210,7 @@ export class CampaignBoardScreen implements Screen {
     drawText(fb, 'Fatigue', col1, y, C.GREY_L, 'tiny');
     fillRect(fb, col1 + 34, y + 1, 40, 4, C.BLACK);
     fillRect(fb, col1 + 34, y + 1, Math.round(40 * P.fatigue), 4, P.fatigue > 0.6 ? C.FIRE_R : P.fatigue > 0.3 ? C.FIRE_Y : C.RAF_GREEN);
-    drawText(fb, `ON TYPE: ${TYPE_LEVELS[typeLevel(typeSkill(s))]}`, col1 + 80, y, C.CHALK, 'tiny');
+    drawText(fb, `ON TYPE: ${TYPE_LEVELS[typeLevel(s)]}`, col1 + 80, y, C.CHALK, 'tiny');
     y += 10;
     // The sector stations.
     drawText(fb, 'SECTOR STATIONS', col1, y, C.SIGHT, 'tiny');
@@ -309,7 +309,7 @@ export class PostingsScreen implements Screen {
     let y = 28;
     const line = (t: string, c: number = C.CHALK, x = 18) => { for (const l of wrapText(t, 284, 'tiny')) { drawText(fb, l, x, y, c, 'tiny'); y += 7; } };
     // Hours on each type.
-    const hrs = (t: CampaignType) => `${TYPE_PLURAL[t]} ${Math.floor(minutesOnType(s, t) / 60)} hrs${minutesOnType(s, t) ? ` (${TYPE_LEVELS[typeLevel(typeSkill(s, t))].toLowerCase()})` : ''}`;
+    const hrs = (t: CampaignType) => `${TYPE_PLURAL[t]} ${Math.floor(minutesOnType(s, t) / 60)} hrs${minutesOnType(s, t) ? ` (${TYPE_LEVELS[typeLevel(s, t)].toLowerCase()})` : ''}`;
     line(`${playerName(s)}. On type: ${hrs('hurricane')}, ${hrs('spitfire')}.`, C.WHITE);
     // Where you've served.
     const served = s.served ?? [{ squadron: s.squadron, home: s.home, aircraft: s.aircraft, from: 0 }];
