@@ -126,6 +126,7 @@ const TINY: Record<string, string> = {
   ' ': '...|...|...|...|...', '<': '..x|.x.|x..|.x.|..x', '>': 'x..|.x.|..x|.x.|x..',
   "'": '.x.|.x.|...|...|...', ',': '...|...|...|.x.|x..', '!': '.x.|.x.|.x.|...|.x.', '?': 'xx.|..x|.x.|...|.x.',
   '(': '.x.|x..|x..|x..|.x.', ')': '.x.|..x|..x|..x|.x.', '=': '...|xxx|...|xxx|...',
+  ';': '...|.x.|...|.x.|x..', '[': 'xx.|x..|x..|x..|xx.', ']': '.xx|..x|..x|..x|.xx', '"': 'x.x|x.x|...|...|...',
 };
 
 type Bitmap = { w: number; h: number; bits: Uint8Array };
@@ -164,6 +165,11 @@ function plot(fb: FrameBuffer, x: number, y: number, c: number): void {
 
 /** Draw text; returns the x after the last glyph. */
 /** Fold accented letters to plain ones the glyph set has (Wróblewski → Wroblewski). */
+/** Whether the tiny font has a glyph for this character (otherwise it draws '?'). */
+export function hasTinyGlyph(ch: string): boolean {
+  return SMALL.has(foldText(ch).toUpperCase());
+}
+
 export function foldText(s: string): string {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/Ł/g, 'L');
 }

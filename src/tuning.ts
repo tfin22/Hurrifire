@@ -69,6 +69,15 @@ export const TUNING = {
     wingDrop: 1.4,
     spinBuild: 0.9,
     spinRecover: 1.2,
+    /**
+     * Experience on type, from just converted to an old hand (FlightEnv.typeSkill):
+     * control response ±8%, spins develop and recover ±30%, a damaged part
+     * (controls, radiator) gets back ±30% of what it lost, fuel ±4%.
+     */
+    typeHandling: 0.08,
+    typeSpin: 0.3,
+    typeNurse: 0.3,
+    typeEconomy: 0.04,
     spinRoll: 2.6,
     spinYaw: 1.1,
     /** Load factor below which a carburetted Merlin cuts out. */
@@ -307,6 +316,22 @@ export const TUNING = {
     vacancySorties: 5,
     /** Days in hospital when wounded. */
     woundedDays: [4, 14] as [number, number],
+    /** Hours on type from OTU at the start, and from a conversion course. */
+    otuHours: 12,
+    conversionHours: 8,
+    /**
+     * Hours on type: NEW, FAMILIAR and SKILLED from these (GREEN before);
+     * the flight model's edge runs from none at `zero` (worse than average)
+     * to full at `full` (better), neutral half way, about as you become familiar.
+     */
+    typeHours: { new: 20, familiar: 35, skilled: 55, zero: 10, full: 60 },
+    /** Days away converting to a new type, or joining a new squadron (or moving it) on the same type. */
+    conversionDays: 3,
+    moveDays: 1,
+    /** Days between one posting or squadron move and the next. */
+    postingGapDays: 10,
+    /** Chance a forward field (Hawkinge, Lympne, Manston) is attacked as the squadron scrambles, by phase. */
+    forwardAttack: { channel: 0.15, airfields: 0.45, london: 0.1, jabo: 0.25 } as Record<string, number>,
   },
 
   escort: {
@@ -506,6 +531,10 @@ export const TUNING = {
     startAbove: 800,
     /** JUMP TO RAID (after a real take-off) needs this much height under you (m). */
     jumpMinAgl: 100,
+    /** It goes to where you'd meet the raid, both flying on, but never more than this far ahead (s). */
+    jumpMaxAhead: 1800,
+    /** Fuel used getting there, as a fraction of full-power burn: climbing and cruising. */
+    jumpFuelRate: 0.75,
   },
 
   /** The docking computer: jump to final approach after a homing. */

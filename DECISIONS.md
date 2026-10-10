@@ -1203,3 +1203,164 @@ can see where you are:
 Starting up has its own random stream, so it shifts nothing else in a
 sortie. The tunables are `sortie.primeBase`, `primeFlood`, `catchChance`,
 `catchChanceShort`, `catchAfter` and `assistStep`.
+
+## Jump to raid: where you'd meet it, not where it is
+
+Playtest: "When jumping to raid it should jump to where the raid would be
+after flying there from both sides. Not teleported to France."
+
+Before, JUMP TO RAID put the squadron next to the raid wherever it was at
+that moment, which, just after take-off, was often still over France.
+Now:
+- **Where you'd meet.** It works out where the squadron would meet the
+  raid if both flew on. The squadron climbs at 11 m/s and cruises at
+  105 m/s (the same as the other squadrons nobody can see) from where you
+  are. The raid flies on along its route.
+- **That time passes.** The raid flies on that long, bombing its target
+  if it gets there first. Each aircraft in the squadron uses that much
+  fuel: 75% of full-power burn, never leaving less than 10%. The prompt
+  says how long it took ("RAID AHEAD - 12 MIN LATER").
+- **Never over France.** Neither the raid nor the squadron may be over
+  French soil at the meeting point; the sea off it is fair game. (The
+  rough `isFrance` box takes in most of the Strait of Dover, so it's
+  paired with the map's sea.)
+- **If the controller's raid can't be caught** short of France, another
+  raid that can is taken instead.
+- **If no raid can be caught** (a raid on the coast, a long way from your
+  field), the squadron is put a minute short of the French coast on the
+  raid's way home, with "CAUGHT IT ON ITS WAY HOME". It's a little
+  generous, but better than an empty sky.
+- **On the way home,** the squadron is put behind the raid, chasing it,
+  rather than ahead of it on the French side.
+
+Across 180 jumps (three phases, four bases), none was over France. 140
+met the raid on its way in, 10 to 23 minutes later, and 40 caught it on
+its way home. On average the jump used 20% of the fuel.
+
+Only the raid you join flies on. Other raids and squadrons, and the
+clock, don't move.
+
+The tunables are `arcade.jumpMaxAhead` and `jumpFuelRate`.
+
+## The career: experience on type, and postings
+
+Playtest: "Is it possible to build up skill on type (if you fly
+Hurricanes in career mode you get better, nurse damage more, a bump in
+manoeuvres)? And can there be different postings? Conversion to other
+types? Or your squadron moves as well. Flying from Biggin Hill is a long
+way away."
+
+### Experience on type
+You keep the hours you fly on each type. A new campaign starts with 12
+hours from OTU. A conversion course gives 8 hours on the new type. The
+board shows four levels:
+
+| Level | Hours on type | About |
+|---|---|---|
+| GREEN | under 20 | the first eight sorties of a career |
+| NEW | 20 | fifteen sorties more |
+| FAMILIAR | 35 | twenty more |
+| SKILLED | 55 | |
+
+The news tells you as you reach each one. (It was four levels by
+fraction of 50 hours at first. Playtest: "Got to be new for a while":
+you went from the bottom level to the next after one sortie.)
+
+In the flight model (`FlightEnv.typeSkill`, the player only), experience
+runs from 0 at 10 hours to 1 at 60. It's 0.5 (neutral) at 35 hours, as
+you become familiar. Quick combat, scramble and escort fly at 0.5,
+exactly as before. A green pilot is a little worse than that, and a
+skilled one a little better:
+- **Controls:** pitch and roll response ±8%.
+- **The edge of the stall:** spins develop more slowly and recover more
+  quickly, ±30%.
+- **Nursing damage:** a shot-up elevator or aileron, or a holed radiator,
+  gets back up to 30% of what it lost. A green pilot loses up to 30% more.
+  With a holed radiator at full throttle, a skilled pilot's engine lasts
+  over 10% longer before it seizes, and a green pilot's goes sooner.
+- **Fuel:** ±4%.
+
+These are deliberately small. The aircraft are the same, and the pilot
+gets the last bit out of them.
+
+### Where the squadron flies from
+Each sector station has the satellite and forward fields its squadrons
+used:
+- Biggin Hill: Hawkinge, Lympne, West Malling, Gravesend
+- Kenley: Croydon, Redhill, Hawkinge
+- Hornchurch: Manston, Rochford
+- North Weald: Rochford, Stapleford Tawney
+- Tangmere: Westhampnett
+
+The board has a new menu line to choose the field. Forward fields
+(Hawkinge, Lympne, Manston) are nearer the coast and the raids, but
+they're caught on the ground more often (45% of sorties in the airfields
+phase against 30% at a sector station, and 15% in the Channel battles).
+They're bombed off-screen too. When the sector station is bombed out,
+the squadron moves to a satellite on its own, and back once the station
+is open again.
+
+### Postings
+POSTINGS on the board:
+- **Ask Group for a posting** to a squadron at any sector station, on
+  either type.
+  - The other type means 3 days converting first. The same type means a
+    day travelling.
+  - The squadron is new: a fresh roster, a new callsign, full strength.
+  - Rank goes with you: a Flight Lieutenant gets B Flight, a Squadron
+    Leader the squadron.
+- **Commanding (Squadron Leader),** you can move your squadron, pilots
+  and all, to another station instead. That costs a day.
+- **Limits:** not while you're in hospital, and not within 10 days of
+  your last move. The screen says why when it's refused.
+- **While you're away,** the days pass off-screen as they do in hospital.
+- **Your record:** the postings screen lists your hours on each type and
+  the squadrons you've served with.
+
+Older saves still load. Hours on type are worked out from the minutes
+already flown, all on the squadron's type.
+
+The tunables are `flight.typeHandling`, `typeSpin`, `typeNurse` and
+`typeEconomy`, and `campaign.otuHours`, `conversionHours`,
+`typeHours`, `conversionDays`, `moveDays`, `postingGapDays` and
+`forwardAttack`.
+
+## A manual: Pilot's Notes
+
+Playtest: "I think we need a manual on the main page now."
+
+MANUAL on the title menu opens the Pilot's Notes. A contents page leads
+to ten chapters:
+1. Getting started
+2. Keyboard
+3. Touch and gamepad
+4. Starting up
+5. Flying her
+6. Finding the enemy
+7. Combat
+8. Damage and getting home
+9. Campaign 1940
+10. Settings
+
+Each chapter is laid out on buff pages like the logbook. Left and right
+(or a tap at either edge) turn the page, and carry on into the next
+chapter. A tap in the middle, or back, returns to the contents.
+
+The text lives in `src/content/text/manual.ts` with a little markup:
+- `# heading`
+- `- bullet`
+- `KEY | what it does` (two columns)
+
+The layout (`paginate`) keeps a heading with the paragraph after it. A
+test checks that every page fits, that no heading sits alone at the foot
+of a page, and that the small font has every character used. It didn't
+have `;`, `[`, `]` or `"`, so those glyphs were added.
+
+Two old key clashes turned up while writing the keyboard chapter:
+- **X** was right rudder and also engine off. Steering right on the
+  landing roll could switch the engine off and end the sortie. Engine off
+  is now **O**.
+- **N** was jump home and also the mouse-flying toggle. The mouse toggle
+  is now **U**.
+
+The title menu's rows are a pixel closer together to fit MANUAL in.

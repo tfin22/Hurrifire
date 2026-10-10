@@ -244,6 +244,37 @@ export class Raid implements RaidLink {
     if (this.phase === 'outbound') { this.leg = Math.max(this.leg, 3); }
   }
 
+  /** Where the plot will be in `t` seconds, flying on along its route (it isn't moved): position, track, and whether it's past its target. */
+  predict(t: number): { pos: Vec3; dir: Vec3; homeward: boolean } {
+    const pos = this.plot.clone();
+    const dir = new Vec3(this.vel.x, 0, this.vel.z);
+    let leg = this.leg, left = t * this.speed;
+    for (;;) {
+      const wp = this.route[Math.min(leg, this.route.length - 1)];
+      const d = Math.hypot(wp.x - pos.x, wp.z - pos.z);
+      if (d > 1) dir.set(wp.x - pos.x, 0, wp.z - pos.z);
+      if (left <= 0) break;
+      if (d <= left) {
+        pos.x = wp.x; pos.z = wp.z; left -= d;
+        if (leg >= this.route.length - 1) break;
+        leg++;
+      } else {
+        pos.x += ((wp.x - pos.x) / d) * left; pos.z += ((wp.z - pos.z) / d) * left;
+        left = 0;
+      }
+    }
+    pos.y = this.alt;
+    const l = dir.len();
+    if (l > 0) dir.scale(1 / l);
+    return { pos, dir, homeward: leg >= 3 || this.phase === 'outbound' };
+  }
+
+  /** A raid nobody has met yet flies on `t` seconds, as if that time had passed (phases, bombing and all). */
+  fastForward(t: number, time: number): void {
+    if (this.spawned) return;
+    for (let s = 0; s < t; s += 1) this.step(Math.min(1, t - s), time);
+  }
+
   /** Make the raid real: aircraft in formation around the plot. */
   spawn(w: World, rng: Rng): void {
     if (this.spawned) return;

@@ -22,6 +22,7 @@ export const CAMPAIGN_VERSION = 1;
 export const CAMPAIGN_KEY = 'scramble.campaign';
 
 export type Rank = keyof typeof RANK_NAMES;
+export type CampaignType = 'hurricane' | 'spitfire';
 export type Nation = 'british' | 'polish' | 'czech' | 'canadian' | 'newZealand' | 'australian' | 'southAfrican';
 
 export interface RosterPilot {
@@ -54,6 +55,10 @@ export interface CampaignPlayer {
   backOn?: number;
   /** Reprimands: sound aircraft put down in fields. Each holds promotion back. */
   writeUps?: number;
+  /** Minutes flown on each type, OTU and conversion included (older saves: worked out from the total). */
+  typeMinutes?: Partial<Record<CampaignType, number>>;
+  /** Away (converting to a new type, or joining a new squadron) until this day of the year. */
+  awayUntil?: number;
 }
 
 export interface CampaignState {
@@ -62,7 +67,15 @@ export interface CampaignState {
   ironman: boolean;
   home: string;
   squadron: string;
-  aircraft: 'hurricane' | 'spitfire';
+  aircraft: CampaignType;
+  /** The satellite or forward field the squadron flies from instead of its sector station (none: home). */
+  flyFrom?: string;
+  /** flyFrom was forced on the squadron by its station being out of action, and lifts when it reopens. */
+  flyFromForced?: boolean;
+  /** Day of the year of the player's last posting or squadron move. */
+  lastMove?: number;
+  /** The squadrons the player has served with, and when they joined. */
+  served?: { squadron: string; home: string; aircraft: CampaignType; from: number }[];
   /** Index into CAMPAIGN_DAYS. */
   dayIdx: number;
   sortieOfDay: number;
@@ -94,6 +107,22 @@ export interface CampaignState {
 }
 
 export const SECTOR_STATIONS = ['Biggin Hill', 'Kenley', 'Hornchurch', 'North Weald', 'Northolt', 'Tangmere', 'Debden'];
+
+/**
+ * The satellite and forward fields each sector station's squadrons flew
+ * from: forward to Hawkinge, Lympne or Manston at first light to be nearer
+ * the coast, or to a satellite when the station itself was bombed out.
+ */
+export const SECTOR_FIELDS: Record<string, string[]> = {
+  'Biggin Hill': ['Hawkinge', 'Lympne', 'West Malling', 'Gravesend'],
+  Kenley: ['Croydon', 'Redhill', 'Hawkinge'],
+  Hornchurch: ['Manston', 'Rochford'],
+  'North Weald': ['Rochford', 'Stapleford Tawney'],
+  Northolt: [],
+  Tangmere: ['Westhampnett'],
+  Debden: [],
+};
+const FORWARD = new Set(['Hawkinge', 'Lympne', 'Manston']);
 export const PAIRS_FROM = dayOfYear(8, 13);
 
 export function dayOfYear(month: number, day: number): number {
@@ -115,7 +144,7 @@ const END_OF_CAMPAIGN = dayOfYear(10, 31);
 export interface NewCampaignOpts {
   surname: string;
   home: string;
-  aircraft: 'hurricane' | 'spitfire';
+  aircraft: CampaignType;
   ironman: boolean;
 }
 
@@ -133,18 +162,28 @@ export function newCampaign(seed: number, o: NewCampaignOpts): CampaignState {
     stats: { raidsTurned: 0, raidsBombed: 0, airfieldDays: 0, airfieldOpenDays: 0, lost: 0, pilotsTotal: 0, squadronKills: 0, sorties: 0 },
     news: [], ended: null,
   };
+  raiseRoster(s, rng);
+  s.player.typeMinutes = { [o.aircraft]: TUNING.campaign.otuHours * 60 };
+  s.served = [{ squadron: s.squadron, home: s.home, aircraft: s.aircraft, from: currentDoy(s) }];
+  s.stats.pilotsTotal = s.roster.length + 1;
+  startDay(s);
+  return s;
+}
+
+/** A squadron's pilots: the CO and flight commanders, old hands, and the rest. The player's post is left empty. */
+function raiseRoster(s: CampaignState, rng: Rng): void {
   const ranks = ['S/Ldr', 'F/Lt', 'F/Lt', 'F/O', 'F/O', 'F/O', 'P/O', 'P/O', 'P/O', 'P/O', 'Sgt', 'Sgt', 'Sgt', 'Sgt', 'F/Sgt', 'Sgt', 'P/O', 'Sgt'];
+  const mine = s.player.rank === 'S/Ldr' ? 0 : s.player.rank === 'F/Lt' ? 2 : -1;
   for (let i = 0; i < TUNING.campaign.startPilots - 1; i++) {
-    const p = makePilot(s, rng, ranks[i % ranks.length], i < 3 ? 'experte' : i < 9 ? 'average' : rng.pick(['green', 'average'] as SkillLevel[]), 0.05);
+    const skill: SkillLevel = i < 3 ? 'experte' : i < 9 ? 'average' : rng.pick(['green', 'average'] as SkillLevel[]);
+    const p = makePilot(s, rng, i === mine ? 'F/O' : ranks[i % ranks.length], skill, currentDoy(s) >= dayOfYear(8, 1) ? 0.2 : 0.05);
     p.sorties = i < 3 ? 40 + rng.int(30) : i < 9 ? 10 + rng.int(20) : rng.int(8);
     p.kills = i < 3 ? 2 + rng.int(5) : i < 9 ? rng.int(3) : 0;
+    if (i === mine) continue;
     if (i === 0) p.role = 'CO';
     if (i === 1) p.role = 'A';
     if (i === 2) p.role = 'B';
   }
-  s.stats.pilotsTotal = s.roster.length + 1;
-  startDay(s);
-  return s;
 }
 
 function makePilot(s: CampaignState, rng: Rng, rank: string, skill: SkillLevel, foreignChance: number): RosterPilot {
@@ -197,6 +236,122 @@ export function playerName(s: CampaignState): string {
 
 export const pilotName = (p: RosterPilot) => `${p.rank} ${p.surname}`;
 
+// ------------------------------------------------------------------ experience on type
+
+/** Minutes the player has on a type. Older saves: OTU hours plus everything flown, all on the squadron's type. */
+export function minutesOnType(s: CampaignState, type: CampaignType = s.aircraft): number {
+  const m = s.player.typeMinutes;
+  if (m) return m[type] ?? 0;
+  return type === s.aircraft ? TUNING.campaign.otuHours * 60 + s.player.minutes : 0;
+}
+
+/**
+ * Experience on a type for the flight model: 0 green (fresh from OTU or a
+ * conversion course), 0.5 (no edge either way) as you become familiar with
+ * her, 1 skilled.
+ */
+export function typeSkill(s: CampaignState, type: CampaignType = s.aircraft): number {
+  const T = TUNING.campaign.typeHours;
+  return Math.max(0, Math.min(1, (minutesOnType(s, type) / 60 - T.zero) / (T.full - T.zero)));
+}
+
+export const TYPE_LEVELS = ['GREEN', 'NEW', 'FAMILIAR', 'SKILLED'] as const;
+/** 0 green, 1 new, 2 familiar, 3 skilled, by hours on the type. */
+export function typeLevel(s: CampaignState, type: CampaignType = s.aircraft): number {
+  const T = TUNING.campaign.typeHours, h = minutesOnType(s, type) / 60;
+  return h >= T.skilled ? 3 : h >= T.familiar ? 2 : h >= T.new ? 1 : 0;
+}
+
+// ------------------------------------------------------------------ where the squadron flies from
+
+/** The field the squadron flies from today. */
+export function flyingFrom(s: CampaignState): string {
+  return s.flyFrom ?? s.home;
+}
+
+const isOpen = (s: CampaignState, field: string) => (s.airfields[field] ?? 0) < TUNING.campaign.closedAt;
+
+/** The fields the squadron could fly from today: its station, if open, and its satellites and forward fields that are. */
+export function fieldChoices(s: CampaignState): string[] {
+  return [s.home, ...(SECTOR_FIELDS[s.home] ?? [])].filter((f) => isOpen(s, f));
+}
+
+/** Fly from another of the sector's fields (or home). */
+export function setFlyFrom(s: CampaignState, field: string): void {
+  if (!fieldChoices(s).includes(field)) return;
+  s.flyFrom = field === s.home ? undefined : field;
+  s.flyFromForced = false;
+  if (s.flyFrom) s.airfields[s.flyFrom] ??= 0;
+}
+
+export const isForward = (field: string) => FORWARD.has(field);
+
+// ------------------------------------------------------------------ postings
+
+export type PostingRefusal = 'wounded' | 'tooSoon' | 'same' | null;
+
+/** Why the player can't be posted (or move the squadron) now, or null. */
+export function postingRefusal(s: CampaignState, home: string, aircraft: CampaignType): PostingRefusal {
+  if (s.player.status !== 'fit') return 'wounded';
+  if (s.lastMove !== undefined && currentDoy(s) - s.lastMove < TUNING.campaign.postingGapDays) return 'tooSoon';
+  if (home === s.home && aircraft === s.aircraft) return 'same';
+  return null;
+}
+
+/**
+ * Posted to another squadron: a new station, perhaps a new type. A new type
+ * means a conversion course first; either way the rest of today is lost.
+ * Rank goes with you: a Flight Lieutenant gets a flight, a Squadron Leader
+ * the squadron.
+ */
+export function postTo(s: CampaignState, home: string, aircraft: CampaignType): string[] {
+  if (postingRefusal(s, home, aircraft)) return [];
+  const T = TUNING.campaign;
+  const rng = new Rng(hash3(s.seed, currentDoy(s), 77));
+  const P = s.player;
+  const converting = aircraft !== s.aircraft;
+  const used = new Set((s.served ?? []).map((x) => x.squadron));
+  const callsign = CALLSIGNS.squadrons.find((c) => !used.has(c) && c !== s.squadron) ?? rng.pick(CALLSIGNS.squadrons.filter((c) => c !== s.squadron));
+  P.typeMinutes = { [s.aircraft]: minutesOnType(s), ...P.typeMinutes };
+  if (converting) P.typeMinutes[aircraft] = (P.typeMinutes[aircraft] ?? 0) + T.conversionHours * 60;
+  s.squadron = callsign;
+  s.home = home;
+  s.aircraft = aircraft;
+  s.flyFrom = undefined;
+  s.flyFromForced = false;
+  s.roster = [];
+  raiseRoster(s, rng);
+  s.stats.pilotsTotal += s.roster.length;
+  s.aircraftServiceable = T.startAircraft;
+  s.repairs = [];
+  s.lastMove = currentDoy(s);
+  (s.served ??= []).push({ squadron: callsign, home, aircraft, from: currentDoy(s) });
+  const days = converting ? T.conversionDays : T.moveDays;
+  P.awayUntil = currentDoy(s) + days;
+  const news = [converting ? NEWS.postedConvert(callsign, home, TYPE_NAMES[aircraft], days) : NEWS.posted(callsign, home)];
+  if (!s.ended) news.push(...nextDay(s));
+  s.news.push(...news);
+  return news;
+}
+
+/** The CO moves the squadron to another sector station: the rest of today goes on the move. */
+export function moveSquadron(s: CampaignState, home: string): string[] {
+  if (s.player.rank !== 'S/Ldr' || postingRefusal(s, home, s.aircraft)) return [];
+  const old = s.home;
+  s.home = home;
+  s.flyFrom = undefined;
+  s.flyFromForced = false;
+  s.lastMove = currentDoy(s);
+  (s.served ??= []).push({ squadron: s.squadron, home, aircraft: s.aircraft, from: currentDoy(s) });
+  s.player.awayUntil = currentDoy(s) + TUNING.campaign.moveDays;
+  const news = [NEWS.squadronMoved(old, home)];
+  news.push(...nextDay(s));
+  s.news.push(...news);
+  return news;
+}
+
+const TYPE_NAMES: Record<CampaignType, string> = { hurricane: 'Hurricane', spitfire: 'Spitfire' };
+
 export function fitPilots(s: CampaignState): RosterPilot[] {
   return s.roster.filter((p) => p.status === 'fit' && p.fatigue < TUNING.campaign.fatigueRest);
 }
@@ -221,20 +376,22 @@ export function nextSortieSpec(s: CampaignState, map: WorldMap, opts: { converge
   const phase = campaignPhase(s);
   const seed = hash3(s.seed, s.dayIdx * 8 + s.sortieOfDay, s.retries + 1) >>> 0;
   const rng = new Rng(seed);
-  const home = map.airfieldByName(s.home)!;
-  const underAttack = phase === 'airfields' && rng.chance(0.3);
+  const from = flyingFrom(s);
+  const home = map.airfieldByName(from)!;
+  // A forward field, nearer the coast, is caught on the ground more often.
+  const underAttack = isForward(from) ? rng.chance(TUNING.campaign.forwardAttack[phase] ?? 0) : phase === 'airfields' && rng.chance(0.3);
   const big = d.month === 9 && d.day === 15;
   const { leading, others } = formationFor(s);
   const hours = [[8, 11], [12, 15], [16, 18]][Math.min(2, s.sortieOfDay)];
   const toSp = (p: RosterPilot): SquadronPilot => ({ id: p.id, name: pilotName(p), skill: p.skill, fatigue: p.fatigue });
   return {
     seed, month: d.month, day: d.day, hour: hours[0] + rng.int(hours[1] - hours[0] + 1),
-    weather: dayWeather(s), phase, home: s.home, playerType: s.aircraft, playerName: playerName(s),
+    weather: dayWeather(s), phase, home: from, playerType: s.aircraft, playerName: playerName(s),
     squadron: s.squadron, controller: CALLSIGNS.controllers[s.home] ?? 'Sapper',
     leading, others: others.map(toSp),
     raids: planRaids(rng, phase, home, map, underAttack, big ? 3 : 1),
     start: 'readiness', convergenceM: opts.convergenceM, underAttack,
-    fatigue: s.player.fatigue, assist: opts.assist, formation: s.formation,
+    fatigue: s.player.fatigue, assist: opts.assist, formation: s.formation, typeSkill: typeSkill(s),
   };
 }
 
@@ -276,7 +433,11 @@ export function applySortie(s: CampaignState, r: SortieResult): string[] {
   // The player.
   P.sorties++;
   P.sortiesAtRank++;
+  const level = typeLevel(s);
+  P.typeMinutes = { [s.aircraft]: minutesOnType(s), ...P.typeMinutes };
+  P.typeMinutes[s.aircraft] = (P.typeMinutes[s.aircraft] ?? 0) + r.durationMin;
   P.minutes += r.durationMin;
+  if (typeLevel(s) > level) news.push(NEWS.typeLevel[typeLevel(s)](TYPE_NAMES[s.aircraft]));
   P.fatigue = Math.min(1, P.fatigue + T.fatiguePerSortie);
   for (const c of r.claims) if (c.allowed !== 'none') P[c.allowed]++;
   if (o.pilot === 'wounded' && !s.ended) {
@@ -443,7 +604,7 @@ export function nextDay(s: CampaignState): string[] {
   for (let doy = from + 1; doy <= to; doy++) {
     news.push(...overnight(s, doy));
     // The days in between, and today's sorties while the player is in hospital, are flown off-screen.
-    const offscreen = doy < to || s.player.status === 'wounded';
+    const offscreen = doy < to || s.player.status === 'wounded' || away(s, doy);
     if (offscreen && doy <= END_OF_CAMPAIGN) {
       const r = offscreenDay(s, doy);
       flown += r.sorties;
@@ -457,20 +618,40 @@ export function nextDay(s: CampaignState): string[] {
     s.ended = 'october';
     return news;
   }
-  if (s.player.status === 'wounded') return [...news, ...nextDay(s)];
+  if (s.player.status === 'wounded' || away(s, currentDoy(s))) return [...news, ...nextDay(s)];
   if (!s.pairsOffered && currentDoy(s) >= PAIRS_FROM) {
     s.pairsOffered = true;
     news.push(NEWS.pairsAvailable);
   }
-  startDay(s);
+  news.push(...startDay(s));
   return news;
 }
 
-function startDay(s: CampaignState): void {
+/** Converting, or on the way to a new squadron, on this day of the year. */
+const away = (s: CampaignState, doy: number) => s.player.awayUntil !== undefined && doy < s.player.awayUntil;
+
+function startDay(s: CampaignState): string[] {
   for (const n of SECTOR_STATIONS) {
     s.stats.airfieldDays++;
     if ((s.airfields[n] ?? 0) < TUNING.campaign.closedAt) s.stats.airfieldOpenDays++;
   }
+  // Bombed out: the squadron flies from a satellite until the station's open again.
+  const news: string[] = [];
+  if (s.flyFrom && s.flyFromForced && isOpen(s, s.home)) {
+    s.flyFrom = undefined;
+    s.flyFromForced = false;
+    news.push(NEWS.backHome(s.home));
+  } else if (!isOpen(s, flyingFrom(s))) {
+    const was = flyingFrom(s);
+    const alt = fieldChoices(s).find((f) => f !== was);
+    if (alt) {
+      s.flyFrom = alt === s.home ? undefined : alt;
+      s.flyFromForced = !!s.flyFrom;
+      if (s.flyFrom) s.airfields[s.flyFrom] ??= 0;
+      news.push(NEWS.flyingFrom(was, alt));
+    }
+  }
+  return news;
 }
 
 /** A night: rest, repairs, replacements, hospital. */
@@ -482,6 +663,7 @@ function overnight(s: CampaignState, doy: number): string[] {
   const P = s.player;
   P.fatigue = Math.max(0, P.fatigue - T.fatigueRecovery);
   if (P.status === 'wounded' && P.backOn !== undefined && doy >= P.backOn) { P.status = 'fit'; P.backOn = undefined; news.push(NEWS.youBack); }
+  if (P.awayUntil !== undefined && doy >= P.awayUntil) { P.awayUntil = undefined; news.push(NEWS.joined(s.squadron, s.home)); }
   for (const p of s.roster) {
     const tired = p.fatigue >= T.fatigueRest;
     p.fatigue = Math.max(0, p.fatigue - T.fatigueRecovery * (tired ? 1.6 : 1));
@@ -502,7 +684,7 @@ function overnight(s: CampaignState, doy: number): string[] {
     news.push(NEWS.replacementPilot(pilotName(p), green));
   }
   // Airfields mend.
-  for (const n of SECTOR_STATIONS) {
+  for (const n of Object.keys(s.airfields)) {
     const was = s.airfields[n];
     s.airfields[n] = Math.max(0, was - T.repairPerDay);
     if (was >= T.closedAt && s.airfields[n] < T.closedAt) news.push(NEWS.airfieldOpen(n));
@@ -545,6 +727,12 @@ function offscreenDay(s: CampaignState, doy: number): { sorties: number; kills: 
   }
   s.stats.squadronKills += kills;
   s.stats.sorties += n;
+  // A forward field the squadron is using gets bombed too, in the Channel battle as well.
+  if (s.flyFrom && isForward(s.flyFrom) && (phase === 'airfields' || phase === 'channel') && rng.chance(T.airfieldRaidChance * 1.5)) {
+    const was = s.airfields[s.flyFrom] ?? 0;
+    s.airfields[s.flyFrom] = Math.min(1, was + rng.range(0.3, 0.85));
+    news.push(was < T.closedAt && s.airfields[s.flyFrom] >= T.closedAt ? NEWS.airfieldClosed(s.flyFrom) : NEWS.airfieldBombed(s.flyFrom));
+  }
   // The sector stations under attack.
   if (phase === 'airfields') {
     for (const name of SECTOR_STATIONS) {

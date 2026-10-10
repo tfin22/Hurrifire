@@ -95,6 +95,8 @@ export class World {
   enemyLevel: EnemyLevel = 'normal';
   /** Arcade mode: the player's aircraft is quicker and tougher, and never blacks out. */
   arcade = false;
+  /** The player's experience on the type flown (FlightEnv.typeSkill); 0.5 is neutral. */
+  playerTypeSkill = 0.5;
   readonly bullets: Bullet[] = [];
   readonly particles: Particle[] = [];
   readonly parachutes: Parachute[] = [];
@@ -234,6 +236,7 @@ export class World {
     e.stallGuard = p.isPlayer && this.stallGuard;
     e.trimPath = p.isPlayer;
     e.arcade = p.isPlayer && this.arcade;
+    e.typeSkill = p.isPlayer ? this.playerTypeSkill : undefined;
     e.wind = this.weather.wind;
     return e;
   }

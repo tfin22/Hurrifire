@@ -3,8 +3,9 @@
 
 import type { App, Screen } from '../app';
 import {
-  campaignDate, campaignPhase, campaignScore, CampaignState, currentDoy, dayWeather, fitPilots, pilotName,
-  playerName, RosterPilot, SECTOR_STATIONS, sortiesToday,
+  campaignDate, campaignPhase, campaignScore, CampaignState, CampaignType, currentDoy, dayWeather, fieldChoices, fitPilots, flyingFrom, isForward,
+  minutesOnType, moveSquadron, pilotName, playerName, postingRefusal, postTo, RosterPilot, SECTOR_STATIONS, setFlyFrom, sortiesToday, TYPE_LEVELS,
+  typeLevel,
 } from '../campaign/campaign';
 import { CAREER_END, DAY_NOTES, PHASE_NAMES, RANK_NAMES } from '../content/text/campaign';
 import { PILOT_NAMES } from '../content/text/briefing';
@@ -106,14 +107,14 @@ export class CampaignStartScreen implements Screen {
 /** The readiness board in the dispersal hut: the day, the squadron, the news. */
 export class CampaignBoardScreen implements Screen {
   touchMode = 'menu' as const;
-  private menu = new Menu([], 214, 178, 96, 11);
+  private menu = new Menu([], 214, 164, 96, 11);
   private newsScroll = 0;
   private news: string[];
 
   constructor(
     private app: App,
     private s: CampaignState,
-    private go: { fly: () => void; roster: () => void; logbook: () => void; quit: () => void; save: () => void },
+    private go: { fly: () => void; roster: () => void; logbook: () => void; postings: () => void; quit: () => void; save: () => void },
   ) {
     this.news = [...s.news];
     s.news.length = 0;
@@ -132,11 +133,28 @@ export class CampaignBoardScreen implements Screen {
         act: () => { s.formation = s.formation === 'vic' ? 'pairs' : 'vic'; this.go.save(); this.build(); },
         adjust: s.pairsOffered ? () => { s.formation = s.formation === 'vic' ? 'pairs' : 'vic'; this.go.save(); this.build(); } : undefined,
       },
+      this.fieldItem(),
+      { label: 'POSTINGS', act: () => this.go.postings() },
       { label: 'THE SQUADRON', act: () => this.go.roster() },
       { label: 'LOGBOOK', act: () => this.go.logbook() },
       { label: 'SAVE AND QUIT', act: () => this.go.quit() },
     ];
     this.menu.sel = sel;
+  }
+
+  /** Which of the sector's fields the squadron flies from: the station, or a satellite or forward field. */
+  private fieldItem() {
+    const s = this.s;
+    const choices = fieldChoices(s);
+    const from = flyingFrom(s);
+    const step = (d: number) => {
+      const i = choices.indexOf(from);
+      setFlyFrom(s, choices[(i + d + choices.length) % choices.length]);
+      this.go.save();
+      this.build();
+    };
+    const many = choices.length > 1;
+    return { label: shortField(from).toUpperCase(), disabled: !many, act: () => step(1), adjust: many ? (d: -1 | 1) => step(d) : undefined };
   }
 
   frame(): void {
@@ -175,7 +193,7 @@ export class CampaignBoardScreen implements Screen {
     y += 8;
     const rows1 = [
       `${RANK_NAMES[P.rank]}${P.rank === 'P/O' ? ', flying as a wingman' : P.rank === 'F/Lt' ? ', B Flight' : ', commanding'}`,
-      `Sorties ${P.sorties}, ${Math.floor(P.minutes / 60)} hrs`,
+      `Sorties ${P.sorties}, ${Math.floor(P.minutes / 60)} hrs, ${Math.floor(minutesOnType(s) / 60)} on ${TYPE_PLURAL[s.aircraft]}`,
       `Destroyed ${P.destroyed}  probable ${P.probable}  damaged ${P.damaged}`,
     ];
     const fit = fitPilots(s).length;
@@ -190,8 +208,9 @@ export class CampaignBoardScreen implements Screen {
     y += 22;
     // Fatigue.
     drawText(fb, 'Fatigue', col1, y, C.GREY_L, 'tiny');
-    fillRect(fb, col1 + 34, y + 1, 60, 4, C.BLACK);
-    fillRect(fb, col1 + 34, y + 1, Math.round(60 * P.fatigue), 4, P.fatigue > 0.6 ? C.FIRE_R : P.fatigue > 0.3 ? C.FIRE_Y : C.RAF_GREEN);
+    fillRect(fb, col1 + 34, y + 1, 40, 4, C.BLACK);
+    fillRect(fb, col1 + 34, y + 1, Math.round(40 * P.fatigue), 4, P.fatigue > 0.6 ? C.FIRE_R : P.fatigue > 0.3 ? C.FIRE_Y : C.RAF_GREEN);
+    drawText(fb, `ON TYPE: ${TYPE_LEVELS[typeLevel(s)]}`, col1 + 80, y, C.CHALK, 'tiny');
     y += 10;
     // The sector stations.
     drawText(fb, 'SECTOR STATIONS', col1, y, C.SIGHT, 'tiny');
@@ -203,6 +222,9 @@ export class CampaignBoardScreen implements Screen {
       drawText(fb, n, x, yy, n === s.home ? C.WHITE : C.CHALK, 'tiny');
       drawText(fb, st, x + 56, yy, st === 'OPEN' ? C.CHALK : st === 'CLOSED' ? C.FIRE_R : C.FIRE_Y, 'tiny');
     });
+    // Flying from a satellite or forward field.
+    const from = flyingFrom(s);
+    if (from !== s.home) drawText(fb, `Flying from ${from}${isForward(from) ? ', forward' : ''}${s.flyFromForced ? ' (station out)' : ''}`, col1 + 100, y + 14, C.FIRE_Y, 'tiny');
     y += 24;
     hline(fb, 10, 310, y, C.SMOKE);
     y += 4;
@@ -216,14 +238,99 @@ export class CampaignBoardScreen implements Screen {
     lines.slice(this.newsScroll, this.newsScroll + maxL).forEach((l, i) => drawText(fb, l, col1, y + i * 7, C.CHALK, 'tiny'));
     if (lines.length > maxL) drawText(fb, 'TAP FOR MORE', 140, 242, C.GREY_L, 'tiny');
     // Orders.
-    panel(fb, 206, 172, 110, 62, C.BLACK);
+    panel(fb, 206, 158, 110, 86, C.BLACK);
     this.menu.draw(fb);
     if (s.ironman) drawText(fb, 'IRONMAN', 270, 238, C.FIRE_R, 'tiny');
-    if (P.status !== 'fit') drawText(fb, `In hospital until ${P.backOn! - currentDoy(s)} days`, 210, 160, C.FIRE_Y, 'tiny');
+    if (P.status !== 'fit') drawText(fb, `In hospital until ${P.backOn! - currentDoy(s)} days`, 210, 150, C.FIRE_Y, 'tiny');
   }
 
   effects(): ScreenEffects {
     return noEffects();
+  }
+}
+
+const TYPE_PLURAL: Record<CampaignType, string> = { hurricane: 'Hurricanes', spitfire: 'Spitfires' };
+const shortField = (f: string) => f.replace(' Tawney', '');
+
+/**
+ * Postings: ask Group for a posting to another squadron (another station,
+ * or the other type, with a conversion course first); or, commanding, move
+ * the squadron to another station.
+ */
+export class PostingsScreen implements Screen {
+  touchMode = 'menu' as const;
+  private menu = new Menu([], 70, 120, 180, 13);
+  private home: string;
+  private type: CampaignType;
+  private confirm: 'post' | 'move' | null = null;
+
+  constructor(private app: App, private s: CampaignState, private back: () => void, private save: () => void) {
+    this.home = s.home;
+    this.type = s.aircraft;
+    this.build();
+  }
+
+  private build(): void {
+    const s = this.s;
+    const sel = this.menu.sel;
+    const adj = (f: (d: -1 | 1) => void) => ({ act: () => { f(1); this.confirm = null; this.build(); }, adjust: (d: -1 | 1) => { f(d); this.confirm = null; this.build(); } });
+    const cyc = <T,>(list: readonly T[], v: T, d: number) => list[(list.indexOf(v) + d + list.length) % list.length];
+    const refused = postingRefusal(s, this.home, this.type);
+    const canMove = s.player.rank === 'S/Ldr' && this.type === s.aircraft && !refused;
+    this.menu.items = [
+      { label: `${this.type === 'spitfire' ? 'SPITFIRE' : 'HURRICANE'} SQUADRON`, ...adj(() => { this.type = this.type === 'spitfire' ? 'hurricane' : 'spitfire'; }) },
+      { label: `AT ${this.home.toUpperCase()}`, ...adj((d) => { this.home = cyc(SECTOR_STATIONS, this.home, d); }) },
+      {
+        label: this.confirm === 'post' ? 'SURE? TAP AGAIN' : 'ASK FOR A POSTING', disabled: !!refused,
+        act: () => { if (this.confirm === 'post') { postTo(s, this.home, this.type); this.save(); this.back(); return; } this.confirm = 'post'; this.build(); },
+      },
+      {
+        label: this.confirm === 'move' ? 'SURE? TAP AGAIN' : 'MOVE THE SQUADRON', disabled: !canMove,
+        act: () => { if (this.confirm === 'move') { moveSquadron(s, this.home); this.save(); this.back(); return; } this.confirm = 'move'; this.build(); },
+      },
+      { label: 'BACK', act: () => this.back() },
+    ];
+    this.menu.sel = Math.min(sel, this.menu.items.length - 1);
+  }
+
+  frame(): void {
+    const inp = this.app.input;
+    if (inp.consume('back')) { this.back(); return; }
+    this.menu.input(inp);
+  }
+
+  tick(): void {}
+
+  render(fb: FrameBuffer): void {
+    const s = this.s;
+    fillRect(fb, 0, 0, W, 256, C.RAF_EARTH_D);
+    panel(fb, 10, 8, 300, 240, C.BLACK);
+    drawTextCentered(fb, 'POSTINGS', 160, 14, C.SIGHT);
+    let y = 28;
+    const line = (t: string, c: number = C.CHALK, x = 18) => { for (const l of wrapText(t, 284, 'tiny')) { drawText(fb, l, x, y, c, 'tiny'); y += 7; } };
+    // Hours on each type.
+    const hrs = (t: CampaignType) => `${TYPE_PLURAL[t]} ${Math.floor(minutesOnType(s, t) / 60)} hrs${minutesOnType(s, t) ? ` (${TYPE_LEVELS[typeLevel(s, t)].toLowerCase()})` : ''}`;
+    line(`${playerName(s)}. On type: ${hrs('hurricane')}, ${hrs('spitfire')}.`, C.WHITE);
+    // Where you've served.
+    const served = s.served ?? [{ squadron: s.squadron, home: s.home, aircraft: s.aircraft, from: 0 }];
+    line(`Served with: ${served.map((x) => `${x.squadron} (${x.home}, ${TYPE_PLURAL[x.aircraft]})`).join('; ')}.`);
+    y += 4;
+    line('Group can post you to another squadron: another station, or the other type after a conversion course. Your rank goes with you. Commanding, you can move the whole squadron instead.', C.GREY_L);
+    this.menu.draw(fb);
+    // What the choice means.
+    y = 192;
+    const refused = postingRefusal(s, this.home, this.type);
+    const gap = TUNING.campaign.postingGapDays - (currentDoy(s) - (s.lastMove ?? -99));
+    if (refused === 'wounded') line('Not while you are in hospital.', C.FIRE_Y);
+    else if (refused === 'tooSoon') line(`Group won't move you again so soon: ask in ${gap} day${gap > 1 ? 's' : ''}.`, C.FIRE_Y);
+    else if (refused === 'same') line(`That's where you are: ${s.squadron} Squadron at ${s.home}.`, C.GREY_L);
+    else {
+      const converting = this.type !== s.aircraft;
+      line(converting
+        ? `A new squadron at ${this.home}, on ${TYPE_PLURAL[this.type]}. ${TUNING.campaign.conversionDays} days converting first, and you start new on the type.`
+        : `A new squadron at ${this.home}. A day travelling. New pilots to get to know; they don't know you either.`);
+      if (s.player.rank === 'S/Ldr' && !converting) line(`Or move ${s.squadron} Squadron, pilots and all, to ${this.home}: a day on the move.`);
+    }
   }
 }
 
