@@ -1083,3 +1083,47 @@ Pulling and pushing work from that baseline: full back stick is still
 the full G, and the push to zero G is unchanged. The AI flies with its
 own closed-loop controllers and was balanced against the 1 g neutral, so
 it keeps it (`trimPath` is the player's only).
+
+### Trim, second go: hold the line, and keep the wings level
+
+Playtest: "Still seeing the out-of-trim behaviour. When I put it on time
+x4 I am constantly having to correct an increasing climb rate."
+
+Right, and the first fix was wrong in two ways. Measured over ten minutes
+hands off (my first test only ran 90 s):
+
+- **It climbed on spare power.** The fix was speed-stable: it held the
+  speed you let go at, so at full throttle every bit of spare power went
+  into climbing. Released level, the Hurricane drifted into a 1,000–
+  1,900 ft/min climb and kept going for ten minutes. The Spitfire climbed
+  to 7,500 m and then porpoised by ±3,000 ft/min. Real pilots trim for a
+  speed and set cruise power to match, but in the game you fly at full
+  throttle and time-compress the transit.
+- **It rolled.** In a slow, full-power climb the aircraft slowly rolled:
+  11°, then 25°, then 45° of bank. Banked, the wing can't hold the path,
+  so the hold pulled harder and harder and it ended in a lazy descending
+  spiral.
+
+Now, hands off, the player's aircraft holds the line it was on:
+- **Pitch: the flight-path angle when the stick came back to neutral.**
+  Within 1.5° of level it holds dead level. A gentle correction settles in
+  about 5 s, with no porpoising, and never pulls or pushes more than
+  0.4 g. A climb it can't keep up eases off below 1.4× stall speed, and a
+  held dive eases out to level.
+- **Roll: the bank when the ailerons came back to neutral.** Within 35° of
+  level it rolls gently back to level (aileron trim against the torque);
+  beyond that it holds the bank.
+
+Ten minutes hands off, Hurricane, Spitfire and 109:
+- **Level at full or ¾ throttle:** within 20–70 m of height, wings level,
+  accelerating to cruising speed.
+- **Released in a 15° climb at full power:** settles into a 1–4° climb it
+  can hold. No stall and no roll.
+- **Released in a dive:** levels out and holds.
+
+In the browser at ×4, a hands-off Hurricane at full throttle held
+3,000–3,008 m, wings level, for four minutes of flight.
+
+The tunables are `flight.trimLevelSnap`, `trimHoldGain`, `trimMaxCorr`,
+`trimDiveRelax`, `trimProtect`, `trimProtectRate`, `trimLevelBank`,
+`trimBankGain` and `trimBankRate`. The speed-seeking ones are gone.

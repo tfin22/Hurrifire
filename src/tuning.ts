@@ -86,11 +86,22 @@ export const TUNING = {
     /** A heavy elevator (the 109) held full back at speed: trim wound in per second (0..1), and how much of the lost G it gives back. */
     trimRate: 0.3,
     trimGain: 0.6,
-    /** The player's aircraft: stick inside this counts as neutral, which holds the path and the speed it was trimmed for. */
+    /** The player's aircraft: stick inside this counts as neutral, which holds the climb or dive angle you let go at. */
     trimStick: 0.05,
-    /** How strongly it seeks that speed (0 = only holds the path), and limits on the correction ((V/Vtrim)² clamp). */
-    trimSpeedGain: 0.6,
-    trimSpeedK: [0.6, 1.4] as const,
+    /** Let go within this of level (rad, 1.5°) and it holds dead level. */
+    trimLevelSnap: 0.026,
+    /** How firmly it holds that angle (1/s: a 5 s settle), and the most it will pull or push to do so (g). */
+    trimHoldGain: 0.2,
+    trimMaxCorr: 0.4,
+    /** A held dive eases out towards level at this rate (rad/s). */
+    trimDiveRelax: 0.012,
+    /** Hands off the ailerons: within this bank (rad, 35°) it rolls back to level, beyond it holds the bank; how firmly (1/s), and at most how fast (rad/s). */
+    trimLevelBank: 0.61,
+    trimBankGain: 0.6,
+    trimBankRate: 0.35,
+    /** A held climb eases off below this times the stall speed, at this rate (rad/s, more the slower). */
+    trimProtect: 1.4,
+    trimProtectRate: 0.01,
     brakeFriction: 0.3,
     sideFriction: 0.8,
     groundRudder: 0.6,
