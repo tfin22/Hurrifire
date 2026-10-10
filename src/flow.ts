@@ -14,6 +14,7 @@ import { CampaignBoardScreen, CampaignEndScreen, CampaignStartScreen, PostingsSc
 import { abortedSortie, applyAirfieldState, applySortie, nextSortieSpec } from './campaign/campaign';
 import type { SortieResult } from './sim/sortie';
 import { ReplayScreen } from './screens/replay';
+import { ManualScreen } from './screens/manual';
 import { FlownSortie } from './screens/sortieScreen';
 import { EscortSortie, EscortSpec } from './sim/escort';
 import { Rng } from './core/rng';
@@ -32,6 +33,7 @@ export class Flow {
       quickCombat: () => this.quickCombat(),
       logbook: () => this.app.setScreen(new LogbookScreen(this.app, this.game, () => this.toTitle())),
       settings: () => this.app.setScreen(new SettingsScreen(this.app, () => this.toTitle())),
+      manual: () => this.app.setScreen(new ManualScreen(this.app, () => this.toTitle())),
       modelViewer: () => this.app.setScreen(new BenchScreen(this.app, () => this.toTitle(), allModels())),
       escort: () => this.escort(),
     });

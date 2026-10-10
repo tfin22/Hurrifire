@@ -25,7 +25,7 @@ const KEY_ACTIONS: Record<string, Action> = {
   F1: 'view1', F2: 'view2', F3: 'view3', F4: 'view4',
   '[': 'timeDown', ']': 'timeUp',
   i: 'start', j: 'bailOut', m: 'map', '`': 'debug', Escape: 'pause',
-  v: 'homing', x: 'engineOff', n: 'jumpHome', r: 'jumpRaid', q: 'rt', '5': 'rt5', '6': 'rt6',
+  v: 'homing', o: 'engineOff', n: 'jumpHome', r: 'jumpRaid', q: 'rt', '5': 'rt5', '6': 'rt6',
   h: 'help', e: 'boost', c: 'canopy', k: 'panel', '9': 'debugNext', '0': 'debugAct',
   Enter: 'ok', Backspace: 'back',
 };
@@ -61,7 +61,8 @@ export class Keyboard {
         if (e.key === 'ArrowRight') this.input.push('right');
         if (e.key === ' ') this.input.push('ok');
         if (k === 'Escape') this.input.push('back');
-        if (k === 'n') this.input.mouseStick = !this.input.mouseStick;
+        // X is right rudder and N is jump home: the mouse stick is on U, engine off on O.
+        if (k === 'u') this.input.mouseStick = !this.input.mouseStick;
       }
       this.down.add(k);
     } else {

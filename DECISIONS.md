@@ -1324,3 +1324,43 @@ The tunables are `flight.typeHandling`, `typeSpin`, `typeNurse` and
 `typeEconomy`, and `campaign.otuHours`, `conversionHours`,
 `typeHours`, `conversionDays`, `moveDays`, `postingGapDays` and
 `forwardAttack`.
+
+## A manual: Pilot's Notes
+
+Playtest: "I think we need a manual on the main page now."
+
+MANUAL on the title menu opens the Pilot's Notes. A contents page leads
+to ten chapters:
+1. Getting started
+2. Keyboard
+3. Touch and gamepad
+4. Starting up
+5. Flying her
+6. Finding the enemy
+7. Combat
+8. Damage and getting home
+9. Campaign 1940
+10. Settings
+
+Each chapter is laid out on buff pages like the logbook. Left and right
+(or a tap at either edge) turn the page, and carry on into the next
+chapter. A tap in the middle, or back, returns to the contents.
+
+The text lives in `src/content/text/manual.ts` with a little markup:
+- `# heading`
+- `- bullet`
+- `KEY | what it does` (two columns)
+
+The layout (`paginate`) keeps a heading with the paragraph after it. A
+test checks that every page fits, that no heading sits alone at the foot
+of a page, and that the small font has every character used. It didn't
+have `;`, `[`, `]` or `"`, so those glyphs were added.
+
+Two old key clashes turned up while writing the keyboard chapter:
+- **X** was right rudder and also engine off. Steering right on the
+  landing roll could switch the engine off and end the sortie. Engine off
+  is now **O**.
+- **N** was jump home and also the mouse-flying toggle. The mouse toggle
+  is now **U**.
+
+The title menu's rows are a pixel closer together to fit MANUAL in.
