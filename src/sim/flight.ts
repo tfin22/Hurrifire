@@ -158,8 +158,10 @@ export class FlightState {
   buffet = 0;
   /** Nose-up trim wound in to help a heavy elevator (0..1): full back stick at speed gradually wins back G. */
   trim = 0;
-  /** The speed (m/s) the aircraft was trimmed for when the stick last came back to neutral. */
-  trimV = 0;
+  /** The flight-path angle (rad) held hands off: where the stick last came back to neutral (NaN = not yet set). */
+  trimGamma = NaN;
+  /** The bank (rad) held hands off the ailerons (0 = wings level). */
+  trimBank = NaN;
   spin = 0;
   spinDir = 1;
   heading = 0;
@@ -380,14 +382,21 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
   const eg = elevatorG(t, s.ias);
   if (eg < t.maxG && pitchIn > 0.8) s.trim = Math.min(1, s.trim + dt * T.trimRate);
   else s.trim = Math.max(0, s.trim - dt * T.trimRate * 2);
-  // Neutral holds the path: in a climb or dive at angle γ the wing carries
-  // cos γ of the weight. And like any trimmed aircraft it's speed-stable:
-  // slower than it was trimmed for, the nose drops; faster, it rises.
+  // Hands off, the player's aircraft holds the line it was on: the climb or
+  // dive angle when the stick came back to neutral (within a degree and a
+  // half of level, dead level). At angle γ the wing carries cos γ of the
+  // weight; a gentle correction (no porpoising) holds γ there. A climb it
+  // can't keep up eases off before the stall; a dive eases out to level.
   let gNeutral = 1;
   if (env.trimPath && V > 5) {
-    if (Math.abs(pitchIn) > T.trimStick || s.trimV <= 0) s.trimV = V;
-    const k = clamp((V / s.trimV) ** 2, T.trimSpeedK[0], T.trimSpeedK[1]);
-    gNeutral = Math.sqrt(Math.max(0, 1 - (vAir.y / V) ** 2)) * (1 + (k - 1) * T.trimSpeedGain);
+    const gamma = Math.asin(clamp(vAir.y / V, -1, 1));
+    if (Math.abs(pitchIn) > T.trimStick || Number.isNaN(s.trimGamma)) s.trimGamma = Math.abs(gamma) < T.trimLevelSnap ? 0 : gamma;
+    else {
+      if (s.trimGamma < 0) s.trimGamma = Math.min(0, s.trimGamma + T.trimDiveRelax * dt);
+      const protect = vs * T.trimProtect;
+      if (s.trimGamma > 0 && V < protect) s.trimGamma = Math.max(0, s.trimGamma - T.trimProtectRate * dt * (1 + (5 * (protect - V)) / protect));
+    }
+    gNeutral = Math.cos(gamma) + clamp((T.trimHoldGain * (s.trimGamma - gamma) * V) / G, -T.trimMaxCorr, T.trimMaxCorr);
   }
   const gCmd = commandedG(t, pitchIn, env.arcade ? t.maxG : eg + s.trim * (t.maxG - eg) * T.trimGain, gNeutral);
   const clReq = (gCmd * m * G) / Math.max(qbar * S * mods.liftMul, 1);
@@ -403,6 +412,13 @@ export function stepFlight(s: FlightState, c: FlightControls, env: FlightEnv, mo
 
   // Roll.
   let pCmd = c.roll * rollRateMax(t, V) * mods.aileron * (0.6 + 0.4 * pilot) * (env.arcade ? TUNING.arcade.roll : 1) + mods.aileronBias + mods.rollBias;
+  // Hands off the ailerons, the player's aircraft keeps its wings where they
+  // were: let go nearly level and it rolls gently back to level (aileron trim
+  // against the torque); let go in a proper turn and it holds the bank.
+  if (env.trimPath) {
+    if (Math.abs(c.roll) > T.trimStick || Number.isNaN(s.trimBank)) s.trimBank = Math.abs(s.roll) < T.trimLevelBank ? 0 : s.roll;
+    else if (!s.onGround) pCmd += clamp((s.trimBank - s.roll) * T.trimBankGain - s.p * 0.3, -T.trimBankRate, T.trimBankRate);
+  }
   // Yaw: sideslip target from rudder or auto-rudder; torque at high power, low speed.
   const torqueBeta = t.torque * powerFrac * clamp(1 - V / 110, 0, 1);
   let betaTarget: number;

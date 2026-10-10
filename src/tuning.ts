@@ -86,11 +86,22 @@ export const TUNING = {
     /** A heavy elevator (the 109) held full back at speed: trim wound in per second (0..1), and how much of the lost G it gives back. */
     trimRate: 0.3,
     trimGain: 0.6,
-    /** The player's aircraft: stick inside this counts as neutral, which holds the path and the speed it was trimmed for. */
+    /** The player's aircraft: stick inside this counts as neutral, which holds the climb or dive angle you let go at. */
     trimStick: 0.05,
-    /** How strongly it seeks that speed (0 = only holds the path), and limits on the correction ((V/Vtrim)² clamp). */
-    trimSpeedGain: 0.6,
-    trimSpeedK: [0.6, 1.4] as const,
+    /** Let go within this of level (rad, 1.5°) and it holds dead level. */
+    trimLevelSnap: 0.026,
+    /** How firmly it holds that angle (1/s: a 5 s settle), and the most it will pull or push to do so (g). */
+    trimHoldGain: 0.2,
+    trimMaxCorr: 0.4,
+    /** A held dive eases out towards level at this rate (rad/s). */
+    trimDiveRelax: 0.012,
+    /** Hands off the ailerons: within this bank (rad, 35°) it rolls back to level, beyond it holds the bank; how firmly (1/s), and at most how fast (rad/s). */
+    trimLevelBank: 0.61,
+    trimBankGain: 0.6,
+    trimBankRate: 0.35,
+    /** A held climb eases off below this times the stall speed, at this rate (rad/s, more the slower). */
+    trimProtect: 1.4,
+    trimProtectRate: 0.01,
     brakeFriction: 0.3,
     sideFriction: 0.8,
     groundRudder: 0.6,
@@ -317,8 +328,19 @@ export const TUNING = {
   },
 
   sortie: {
-    /** Seconds of cranking before the engine catches (or doesn't). */
+    /** Seconds a turn on the starter lasts if she doesn't catch. */
     crankToCatch: 2.2,
+    /** Primer strokes a cold Merlin wants: this many, one more early in the morning or late in the year, sometimes one more again. */
+    primeBase: 3,
+    /** Strokes beyond what she wants before she floods. */
+    primeFlood: 2,
+    /** Chance a turn on the starter catches: primed right, and a stroke or so short. */
+    catchChance: 0.8,
+    catchChanceShort: 0.3,
+    /** When in the turn she catches (s). */
+    catchAfter: [0.7, 1.9] as [number, number],
+    /** Assist START: seconds between its steps. */
+    assistStep: 0.45,
     /** Tally-ho needs an enemy within this range (m). */
     tallyRange: 9000,
     /** Seconds before the controller answers a homing request. */
@@ -388,6 +410,22 @@ export const TUNING = {
     strayMarkRange: 9000,
     /** Out of everyone's sight, an aircraft that has gone home is put down at its base beyond this range (m). */
     retireRange: 30000,
+  },
+
+  /** The ops-room map. */
+  map: {
+    /** How often the plot is renewed (s). */
+    every: 30,
+    /** Plot errors (m): radar for a raid nobody has met, the Observer Corps for hostiles in sight, R/T fixes for ours. */
+    radarError: 2500,
+    observerError: 1200,
+    fixError: 500,
+    /** Anything within this of each other is one counter on the table (m): about a counter's width. */
+    groupRange: 7000,
+    /** A raid gone home is taken off within this of where it came from (m). */
+    homeGone: 3000,
+    /** Ours are drawn with a line to their raid while it's further away than this (m). */
+    vectorLine: 5000,
   },
 
   claims: {

@@ -262,13 +262,15 @@ describe('trim: hands off, the aircraft holds what it was doing', () => {
     p.isPlayer = true;
     w.player = p;
     p.fs.setAirborne(new Vec3(0, 1500, 0), 0, speed, pitch);
-    let maxGamma = -1, stalled = false;
+    let maxGamma = -1, stalled = false, maxBank = 0, minY = Infinity, maxY = -Infinity;
     for (let i = 0; i < secs * 50; i++) {
       w.step({ pitch: 0, roll: 0, yaw: 0, throttle, fire: false, boost: false, brake: false, pump: false });
       maxGamma = Math.max(maxGamma, Math.asin(p.fs.vel.y / p.fs.vel.len()));
+      maxBank = Math.max(maxBank, Math.abs(p.fs.roll));
+      if (i > 60 * 50) { minY = Math.min(minY, p.pos.y); maxY = Math.max(maxY, p.pos.y); }
       if (p.fs.stalled) stalled = true;
     }
-    return { maxGamma, stalled, gamma: Math.asin(p.fs.vel.y / p.fs.vel.len()), ias: p.fs.ias };
+    return { maxGamma, stalled, maxBank, drift: maxY - minY, gamma: Math.asin(p.fs.vel.y / p.fs.vel.len()), ias: p.fs.ias };
   }
 
   it('let go in a 15° climb, it settles into a climb it can hold instead of rearing up into a stall', async () => {
@@ -279,6 +281,20 @@ describe('trim: hands off, the aircraft holds what it was doing', () => {
       expect(r.gamma).toBeGreaterThan(0.02);
       expect(r.gamma).toBeLessThan(0.26);
     }
+  });
+
+  it('let go level at full throttle, it holds its height and its wings level for ten minutes (time compression)', async () => {
+    for (const type of ['hurricane', 'spitfire', 'bf109'] as const) {
+      const r = await handsOff(type, 0, 100, 600, 1);
+      expect(r.drift).toBeLessThan(100);
+      expect(r.maxBank).toBeLessThan(0.05);
+    }
+  });
+
+  it('let go in a slow, full-power climb, the torque does not roll it over into a spiral', async () => {
+    const r = await handsOff('spitfire', 0.26, 85, 300);
+    expect(r.maxBank).toBeLessThan(0.1);
+    expect(r.stalled).toBe(false);
   });
 
   it('let go in a dive, it eases out on its own', async () => {

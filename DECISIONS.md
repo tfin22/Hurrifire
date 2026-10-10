@@ -1083,3 +1083,123 @@ Pulling and pushing work from that baseline: full back stick is still
 the full G, and the push to zero G is unchanged. The AI flies with its
 own closed-loop controllers and was balanced against the 1 g neutral, so
 it keeps it (`trimPath` is the player's only).
+
+### Trim, second go: hold the line, and keep the wings level
+
+Playtest: "Still seeing the out-of-trim behaviour. When I put it on time
+x4 I am constantly having to correct an increasing climb rate."
+
+Right, and the first fix was wrong in two ways. Measured over ten minutes
+hands off (my first test only ran 90 s):
+
+- **It climbed on spare power.** The fix was speed-stable: it held the
+  speed you let go at, so at full throttle every bit of spare power went
+  into climbing. Released level, the Hurricane drifted into a 1,000–
+  1,900 ft/min climb and kept going for ten minutes. The Spitfire climbed
+  to 7,500 m and then porpoised by ±3,000 ft/min. Real pilots trim for a
+  speed and set cruise power to match, but in the game you fly at full
+  throttle and time-compress the transit.
+- **It rolled.** In a slow, full-power climb the aircraft slowly rolled:
+  11°, then 25°, then 45° of bank. Banked, the wing can't hold the path,
+  so the hold pulled harder and harder and it ended in a lazy descending
+  spiral.
+
+Now, hands off, the player's aircraft holds the line it was on:
+- **Pitch: the flight-path angle when the stick came back to neutral.**
+  Within 1.5° of level it holds dead level. A gentle correction settles in
+  about 5 s, with no porpoising, and never pulls or pushes more than
+  0.4 g. A climb it can't keep up eases off below 1.4× stall speed, and a
+  held dive eases out to level.
+- **Roll: the bank when the ailerons came back to neutral.** Within 35° of
+  level it rolls gently back to level (aileron trim against the torque);
+  beyond that it holds the bank.
+
+Ten minutes hands off, Hurricane, Spitfire and 109:
+- **Level at full or ¾ throttle:** within 20–70 m of height, wings level,
+  accelerating to cruising speed.
+- **Released in a 15° climb at full power:** settles into a 1–4° climb it
+  can hold. No stall and no roll.
+- **Released in a dive:** levels out and holds.
+
+In the browser at ×4, a hands-off Hurricane at full throttle held
+3,000–3,008 m, wings level, for four minutes of flight.
+
+The tunables are `flight.trimLevelSnap`, `trimHoldGain`, `trimMaxCorr`,
+`trimDiveRelax`, `trimProtect`, `trimProtectRate`, `trimLevelBank`,
+`trimBankGain` and `trimBankRate`. The speed-seeking ones are gone.
+
+## The map shows the whole picture
+
+Before, the map showed only the raid plots. Other squadrons of ours and,
+once a raid was in sight, how it had broken up were missing. Now it is
+the ops-room table:
+- **Hostiles (red).** A raid nobody has met is its radar plot: estimated
+  strength ("17+") and reported height in angels ("A15"), with the
+  radar's errors in both. Once a raid is in sight, the Observer Corps
+  reports each group in it: the bombers, the escort, stragglers, and 109s
+  chasing about.
+- **Ours (blue).** Every other squadron that's up: callsign and
+  strength, with a dotted line to the raid it was sent after while it's
+  still on its way. A big wing is one "WING" counter. Squadrons off the
+  ground show as soon as they're airborne, and they leave the map once
+  they've landed.
+- **Going home: black.** A raid or group heading home is a black counter.
+  It comes off the table once it's back over France.
+- **Flying a 109,** it's the other way about: the raids are blue, and the
+  RAF fighters in sight are red.
+
+The plot is renewed every 30 s, not continuously, and each counter
+carries a fixed error that changes at each renewal (radar 2.5 km,
+Observer Corps 1.2 km, R/T fixes 0.5 km). It's the ops room's picture,
+not the truth.
+
+At this scale a counter covers about 7 km, so anything closer together
+than that is one counter, as it would be on a crowded table. That keeps
+the map readable in the middle of a big fight. A counter that would land
+on another is moved alongside it, with a short line back to where it
+really is.
+
+The tunables are under `map` in `tuning.ts`.
+
+## Starting up: a procedure, not a lottery
+
+Playtest: "It's a little bit hit and hope just now. I just mash start till
+it eventually catches. I like the randomness but it would be nice to have
+an idea of the process."
+
+There was in fact no randomness: three fixed steps behind one key. But the
+magnetos were a toggle, so mashing switched them back off, and the
+messages flashed past. Assist START did everything in silence for four
+seconds. Now it is the real procedure, with a little real luck, and you
+can see where you are:
+- **The fitter tells you how many primer strokes she wants.** Three on a
+  summer afternoon, one more early in the morning or late in the year,
+  and sometimes one more again.
+- **PRIMER is one stroke of the pump per press.**
+  - Each stroke shows as a box in the start-up panel: green up to the
+    fitter's number, gold past it, red once she's flooded (two over).
+  - Primed right and turned over, she catches four times in five. If not,
+    "she won't catch, try again".
+  - One stroke short, she usually coughs and dies (another stroke).
+    Further short, she won't fire.
+  - Flooded, she won't start, but each turn on the starter blows some of
+    the extra fuel out.
+- **MAGS shows ON or OFF**, on the button and in the panel. The starter
+  with the magnetos off says so.
+- **The start-up panel** shows the fitter's number, the strokes, the
+  magnetos and the starter, with an arrow on the next step. The touch
+  buttons show the strokes and the magneto state, and light the next
+  step.
+- **The single START key** (keyboard I, gamepad) does the next step each
+  press: strokes up to the fitter's number, then magnetos, then starter.
+  So mashing it can't flood or switch the magnetos off.
+- **Assist START** does the same, a step at a time, with the pump and
+  starter sounds, and turns her over again if she doesn't catch first
+  time. Always running within 15 s.
+- **In the air,** a dead engine restarts on the starter with the magnetos
+  on, unless it's shot through or out of fuel. Before, a shot-up engine
+  could be restarted.
+
+Starting up has its own random stream, so it shifts nothing else in a
+sortie. The tunables are `sortie.primeBase`, `primeFlood`, `catchChance`,
+`catchChanceShort`, `catchAfter` and `assistStep`.

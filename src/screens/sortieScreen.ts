@@ -9,7 +9,7 @@ import { ControlFrame, SimCmd } from '../input/input';
 import { drawText } from '../render/font';
 import { FrameBuffer, W } from '../render/framebuffer';
 import { C } from '../render/palette';
-import { fillRect, pset } from '../render/raster';
+import { fillRect, pset, rectOutline } from '../render/raster';
 import { makeWorldLayer, Plume } from '../render/worldLayer';
 import { lonLatToXZ } from '../content/world/map';
 import { Vec3 } from '../core/math';
@@ -20,6 +20,7 @@ import type { WorldObjects } from '../content/world/objects';
 import type { Ship } from '../render/worldLayer';
 import type { RTMessage } from '../sim/controller';
 import type { Raid } from '../sim/raid';
+import type { OtherSquadron } from '../sim/squadrons';
 
 /** What the screen needs of a sortie: the RAF scramble, or the 109 escort. */
 export interface FlownSortie {
@@ -46,6 +47,11 @@ export interface FlownSortie {
   rtOptions?(): { cmd: SimCmd; label: string }[];
   /** The docking computer (jump to finals and autoland), where the sortie has one. */
   readonly docking?: { readonly active: boolean };
+  /** Starting up (RAF sortie from readiness): where it's got to, and the next step. */
+  readonly engineStart?: { strokes: number; need: number; flood: number; mags: boolean; cranking: boolean; last: string };
+  nextStartStep?(): 'primer' | 'mags' | 'starter';
+  /** Other squadrons of ours that are up (for the map). */
+  readonly others?: readonly OtherSquadron[];
 }
 import { TUNING } from '../tuning';
 import { FlightScreen } from './flight';
@@ -125,24 +131,26 @@ export class SortieScreen extends FlightScreen {
     for (const o of ['order1', 'order2', 'order3', 'order4'] as const) if (s.consume(o)) this.cmd(o);
     if (s.consume('start')) this.startPress();
     if (s.consume('primer')) this.cmd('primer');
-    if (s.consume('mags')) this.cmd('mags');
-    if (s.consume('starter')) { this.cmd('starter'); this.app.sound('starter'); }
+    if (s.consume('mags')) { this.cmd('mags'); this.app.sound('click'); }
+    if (s.consume('starter')) this.cmd('starter');
     super.frame();
   }
 
   private startStep = 0;
+  private heardStrokes = 0;
+  private heardCrank = false;
   /** Assist: one START button; otherwise each press does the next step. */
   private startPress(): void {
-    if (this.app.settings.assist) { this.cmd('startAll'); this.app.sound('starter'); return; }
-    const step = (['primer', 'mags', 'starter'] as const)[Math.min(2, this.startStep++)];
+    if (this.app.settings.assist) { this.cmd('startAll'); return; }
+    const step = this.sortie.nextStartStep?.() ?? (['primer', 'mags', 'starter'] as const)[Math.min(2, this.startStep++)];
     this.cmd(step);
-    this.app.sound(step === 'starter' ? 'starter' : 'click');
+    if (step === 'mags') this.app.sound('click');
   }
 
   tick(): void {
     super.tick();
     const so = this.sortie;
-    if (this.world.tick % 50 === 0) this.plot.update(this.world.raids, this.world.time);
+    if (this.world.tick % 50 === 0) this.plot.update(this.world.raids, this.world.planes, so.others ?? [], this.player.side, this.world.time);
     // New R/T messages. Urgent ones drop time compression as soon as they're sent.
     const log = so.controller.log;
     for (; this.rtHeard < log.length; this.rtHeard++) if (log[this.rtHeard].urgent) this.timeIdx = 0;
@@ -157,6 +165,14 @@ export class SortieScreen extends FlightScreen {
       this.app.sound('rt');
     }
     this.rtAge += TUNING.sim.dt;
+    // Starting up: a stroke of the pump, the starter turning (yours or assist's).
+    const e = so.engineStart;
+    if (e) {
+      if (e.strokes > this.heardStrokes) this.app.sound('pump');
+      if (e.cranking && !this.heardCrank) this.app.sound('starter');
+      this.heardStrokes = e.strokes;
+      this.heardCrank = e.cranking;
+    }
     while (this.promptShown < so.prompts.length) this.flashMessage(so.prompts[this.promptShown++], 2.5);
     // Arcade after a real take-off: say once that the jump to the raid is there.
     if (!this.raidJumpHinted && this.app.settings.arcade && this.world.tick % 25 === 0 && so.raidJumpRefusal?.() === null) {
@@ -187,9 +203,39 @@ export class SortieScreen extends FlightScreen {
     if (this.sortie.docking?.active && (this.world.tick >> 4) & 1) drawText(fb, 'AUTOLAND - MOVE STICK TO TAKE OVER', 92, 150, C.SIGHT, 'tiny');
     this.drawRT(fb);
     this.drawRTMenu(fb);
-    if (this.sortie.phase === 'startup' && this.messageT <= 0) {
-      drawText(fb, this.app.settings.assist ? 'PRESS START' : 'PRIMER - MAGS - STARTER', 4, 160, C.SIGHT, 'tiny');
+    if (this.sortie.phase === 'startup') this.drawStartUp(fb);
+  }
+
+  /** Starting up: the fitter's advice, and each step as it stands, the next one marked. */
+  private drawStartUp(fb: FrameBuffer): void {
+    const e = this.sortie.engineStart, fs = this.player.fs;
+    if (!e || fs.engine === 'running') {
+      if (this.messageT <= 0) drawText(fb, this.app.settings.assist ? 'PRESS START' : 'PRIMER - MAGS - STARTER', 4, 160, C.SIGHT, 'tiny');
+      return;
     }
+    const next = e.cranking ? 'starter' : this.sortie.nextStartStep?.();
+    const x = 4, y = 146;
+    fillRect(fb, x - 2, y - 2, 118, 34, C.BLACK);
+    drawText(fb, `START UP - FITTER SAYS ${e.need}`, x, y, C.CHALK, 'tiny');
+    const row = (i: number, step: string, label: string, state: string, col: number) => {
+      const ry = y + 8 + i * 7;
+      drawText(fb, next === step ? '>' : ' ', x, ry, C.SIGHT, 'tiny');
+      drawText(fb, label, x + 6, ry, next === step ? C.SIGHT : C.GREY_L, 'tiny');
+      drawText(fb, state, x + 42, ry, col, 'tiny');
+    };
+    // Primer: a box per stroke wanted, filled as they're given; past the flood line, red.
+    const py = y + 8;
+    row(0, 'primer', 'PRIMER', '', C.WHITE);
+    const boxes = Math.max(e.flood, e.strokes);
+    for (let i = 0; i < boxes; i++) {
+      const bx = x + 42 + i * 6;
+      const over = i >= e.flood, extra = i >= e.need;
+      if (i < e.strokes) fillRect(fb, bx, py, 4, 5, over ? C.RED : extra ? C.GOLD : C.FIELD_L);
+      else rectOutline(fb, bx, py, 4, 5, extra ? C.GREY_D : C.GREY_L);
+    }
+    row(1, 'mags', 'MAGS', e.mags ? 'ON' : 'OFF', e.mags ? C.FIELD_L : C.RED);
+    const crank = e.cranking ? ((this.world.tick >> 3) & 1 ? 'TURNING' : 'TURNING.') : e.strokes > e.flood ? 'FLOODED' : '';
+    row(2, 'starter', 'STARTER', crank, e.strokes > e.flood ? C.RED : C.WHITE);
   }
 
   /** The R/T menu, numbered for the keyboard (on a touch screen the buttons show it too). */
@@ -240,7 +286,12 @@ export class SortieScreen extends FlightScreen {
     const fs = this.player.fs;
     if (so.phase === 'startup' && (fs.engine === 'off' || fs.engine === 'starting')) {
       if (this.app.settings.assist) return [{ action: 'start', label: 'START' }];
-      return [{ action: 'primer', label: 'PRIMER' }, { action: 'mags', label: 'MAGS' }, { action: 'starter', label: 'STARTER' }];
+      const e = so.engineStart, next = so.nextStartStep?.();
+      return [
+        { action: 'primer', label: e ? `PRIMER ${e.strokes}` : 'PRIMER', lit: next === 'primer' },
+        { action: 'mags', label: e ? `MAGS ${e.mags ? 'ON' : 'OFF'}` : 'MAGS', lit: next === 'mags' },
+        { action: 'starter', label: 'STARTER', lit: next === 'starter' && fs.engine === 'off' },
+      ];
     }
     const b = super.contextButtons();
     // Arcade after a real take-off: straight to the raid once she's flying.
