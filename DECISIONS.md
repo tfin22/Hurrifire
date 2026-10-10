@@ -1160,3 +1160,46 @@ on another is moved alongside it, with a short line back to where it
 really is.
 
 The tunables are under `map` in `tuning.ts`.
+
+## Starting up: a procedure, not a lottery
+
+Playtest: "It's a little bit hit and hope just now. I just mash start till
+it eventually catches. I like the randomness but it would be nice to have
+an idea of the process."
+
+There was in fact no randomness: three fixed steps behind one key. But the
+magnetos were a toggle, so mashing switched them back off, and the
+messages flashed past. Assist START did everything in silence for four
+seconds. Now it is the real procedure, with a little real luck, and you
+can see where you are:
+- **The fitter tells you how many primer strokes she wants.** Three on a
+  summer afternoon, one more early in the morning or late in the year,
+  and sometimes one more again.
+- **PRIMER is one stroke of the pump per press.**
+  - Each stroke shows as a box in the start-up panel: green up to the
+    fitter's number, gold past it, red once she's flooded (two over).
+  - Primed right and turned over, she catches four times in five. If not,
+    "she won't catch, try again".
+  - One stroke short, she usually coughs and dies (another stroke).
+    Further short, she won't fire.
+  - Flooded, she won't start, but each turn on the starter blows some of
+    the extra fuel out.
+- **MAGS shows ON or OFF**, on the button and in the panel. The starter
+  with the magnetos off says so.
+- **The start-up panel** shows the fitter's number, the strokes, the
+  magnetos and the starter, with an arrow on the next step. The touch
+  buttons show the strokes and the magneto state, and light the next
+  step.
+- **The single START key** (keyboard I, gamepad) does the next step each
+  press: strokes up to the fitter's number, then magnetos, then starter.
+  So mashing it can't flood or switch the magnetos off.
+- **Assist START** does the same, a step at a time, with the pump and
+  starter sounds, and turns her over again if she doesn't catch first
+  time. Always running within 15 s.
+- **In the air,** a dead engine restarts on the starter with the magnetos
+  on, unless it's shot through or out of fuel. Before, a shot-up engine
+  could be restarted.
+
+Starting up has its own random stream, so it shifts nothing else in a
+sortie. The tunables are `sortie.primeBase`, `primeFlood`, `catchChance`,
+`catchChanceShort`, `catchAfter` and `assistStep`.

@@ -127,14 +127,17 @@ describe('a whole sortie', () => {
     expect(a.controller.log.map((m) => m.text)).toEqual(b.controller.log.map((m) => m.text));
   }, 60000);
 
-  it('starts at readiness: no start without priming; primer, mags, starter catches', () => {
+  it('starts at readiness: no start without priming; primed as the fitter says, mags on, the starter catches', () => {
     const s = new Sortie(spec(7, { start: 'readiness', airStart: undefined }), map, objects);
     expect(s.player.fs.engine).toBe('off');
     s.step({ ...blank(), cmds: ['mags', 'starter'] });
     for (let i = 0; i < 200; i++) s.step(blank());
     expect(s.player.fs.engine).toBe('off');
-    s.step({ ...blank(), cmds: ['primer', 'starter'] });
-    for (let i = 0; i < 200; i++) s.step(blank());
+    s.step({ ...blank(), cmds: Array(s.primeNeed).fill('primer') });
+    for (let k = 0; k < 6 && s.player.fs.engine !== 'running'; k++) {
+      s.step({ ...blank(), cmds: ['starter'] });
+      for (let i = 0; i < 200; i++) s.step(blank());
+    }
     expect(s.player.fs.engine).toBe('running');
     expect(s.phase).toBe('takeoff');
   });

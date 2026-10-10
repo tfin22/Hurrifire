@@ -328,8 +328,19 @@ export const TUNING = {
   },
 
   sortie: {
-    /** Seconds of cranking before the engine catches (or doesn't). */
+    /** Seconds a turn on the starter lasts if she doesn't catch. */
     crankToCatch: 2.2,
+    /** Primer strokes a cold Merlin wants: this many, one more early in the morning or late in the year, sometimes one more again. */
+    primeBase: 3,
+    /** Strokes beyond what she wants before she floods. */
+    primeFlood: 2,
+    /** Chance a turn on the starter catches: primed right, and a stroke or so short. */
+    catchChance: 0.8,
+    catchChanceShort: 0.3,
+    /** When in the turn she catches (s). */
+    catchAfter: [0.7, 1.9] as [number, number],
+    /** Assist START: seconds between its steps. */
+    assistStep: 0.45,
     /** Tally-ho needs an enemy within this range (m). */
     tallyRange: 9000,
     /** Seconds before the controller answers a homing request. */

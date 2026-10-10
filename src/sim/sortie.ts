@@ -184,10 +184,17 @@ export class Sortie {
   phase: SortiePhase;
   engaged = false;
   private rng: Rng;
-  private primed = false;
+  /** Starting up: primer strokes given and wanted, magnetos, the turn on the starter. */
+  private strokes = 0;
+  readonly primeNeed: number;
   private mags = false;
   private cranking = -1;
+  /** This turn on the starter catches at this many seconds (Infinity: it won't). */
+  private catchAt = Infinity;
   private startAllT = -1;
+  private engineRng: Rng;
+  /** How the last turn on the starter went. */
+  lastStart: 'none' | 'caught' | 'mags' | 'unprimed' | 'short' | 'unlucky' | 'flooded' | 'gone' = 'none';
   private airborneAt = -1;
   private endT = -1;
   private seen = new Map<number, Engagement['lastSeen']>();
@@ -229,6 +236,10 @@ export class Sortie {
       balloonsDown: objects.balloons.map((b) => b.down),
     };
     this.rng = new Rng(spec.seed ^ 0x5eed);
+    // Starting up has its own dice, so it doesn't shift anything else in the sortie.
+    this.engineRng = new Rng(spec.seed ^ 0xe791);
+    const T = TUNING.sortie;
+    this.primeNeed = T.primeBase + (spec.hour < 9 || spec.month >= 10 ? 1 : 0) + (this.engineRng.chance(0.3) ? 1 : 0);
     const w = (this.world = new World(spec.seed, map));
     const wx = spec.weather;
     w.weather.wind.copy(windVector(wx));
@@ -325,7 +336,7 @@ export class Sortie {
     }
     const angels = spec.raids.length ? Math.round((spec.raids[0].alt * M_TO_FT) / 1000) * 1000 : 15000;
     this.controller.scramble(this.view(), spec.underAttack ? 'base' : 'base', Math.max(10000, angels - 3000));
-    if (spec.start === 'readiness') this.prompts.push(spec.assist ? 'PRESS START' : 'PRIMER, MAGS, STARTER');
+    if (spec.start === 'readiness') this.prompts.push(`FITTER: ${this.primeNeed} STROKES SHOULD DO HER, SIR`);
   }
 
   /** Other squadrons against each raid, and in September, perhaps 12 Group's wing. */
@@ -419,16 +430,13 @@ export class Sortie {
     const p = this.player;
     const fs = p.fs;
     switch (c) {
-      case 'primer': if (fs.engine === 'off') { this.primed = true; this.prompts.push('PRIMED'); } break;
-      case 'mags': this.mags = !this.mags; this.prompts.push(this.mags ? 'MAGNETOS ON' : 'MAGNETOS OFF'); break;
-      case 'starter':
-        if (fs.engine === 'off' || fs.engine === 'dead') {
-          this.cranking = 0;
-          fs.engine = 'starting';
-        }
+      case 'primer':
+        if (fs.engine === 'off') { this.strokes++; this.prompts.push(`PRIMER: ${this.strokes} STROKE${this.strokes > 1 ? 'S' : ''}`); }
         break;
+      case 'mags': this.mags = !this.mags; this.prompts.push(this.mags ? 'MAGNETOS ON' : 'MAGNETOS OFF'); break;
+      case 'starter': this.crank(); break;
       case 'startAll':
-        if (fs.engine === 'off') { this.startAllT = 0; }
+        if (fs.engine === 'off' && this.startAllT < 0) { this.startAllT = 0; }
         break;
       case 'tallyHo': this.tallyHo(); break;
       case 'jumpHome': this.jumpHome(); break;
@@ -447,30 +455,67 @@ export class Sortie {
     }
   }
 
+  /** Where starting up has got to, for the screen. */
+  get engineStart() {
+    return { strokes: this.strokes, need: this.primeNeed, flood: this.primeNeed + TUNING.sortie.primeFlood, mags: this.mags, cranking: this.cranking >= 0, last: this.lastStart };
+  }
+
+  /** The next step of starting up: what the single START key does, and assist does for you. */
+  nextStartStep(): 'primer' | 'mags' | 'starter' {
+    if (this.player.fs.engine === 'off' && this.strokes < this.primeNeed) return 'primer';
+    return this.mags ? 'starter' : 'mags';
+  }
+
+  /** A turn on the starter. Whether she catches is decided now, from the priming and a little luck. */
+  private crank(): void {
+    const fs = this.player.fs;
+    if (fs.engine !== 'off' && fs.engine !== 'dead') return;
+    const T = TUNING.sortie;
+    this.cranking = 0;
+    fs.engine = 'starting';
+    this.catchAt = Infinity;
+    if (!this.mags) { this.lastStart = 'mags'; return; }
+    // Shot through or out of fuel, nothing will start it.
+    if (fs.fuel <= 0 || this.player.damage.engines.every((e) => e <= 0)) { this.lastStart = 'gone'; return; }
+    // In the air a dead engine is warm and windmilling: magnetos are all it needs.
+    if (!fs.onGround) { this.catchAt = T.catchAfter[0]; return; }
+    const r = this.engineRng;
+    const roll = r.next(), when = T.catchAfter[0] + r.next() * (T.catchAfter[1] - T.catchAfter[0]);
+    if (this.strokes > this.primeNeed + T.primeFlood) this.lastStart = 'flooded';
+    else if (this.strokes === 0 || this.strokes < this.primeNeed - 1) this.lastStart = 'unprimed';
+    else if (this.strokes < this.primeNeed) { this.lastStart = 'short'; if (roll < T.catchChanceShort) this.catchAt = when; }
+    else { this.lastStart = 'unlucky'; if (roll < T.catchChance) this.catchAt = when; }
+  }
+
   private startup(dt: number): void {
     const fs = this.player.fs;
-    if (this.startAllT >= 0) {
-      // Assist: the same steps, done for you, in order.
+    const T = TUNING.sortie;
+    if (this.startAllT >= 0 && fs.engine !== 'starting') {
+      // Assist: the same steps, done for you, one at a time; another turn if she doesn't catch.
       this.startAllT += dt;
-      if (this.startAllT > 0.6 && !this.primed) { this.primed = true; this.prompts.push('PRIMED'); }
-      if (this.startAllT > 1.4 && !this.mags) { this.mags = true; this.prompts.push('MAGNETOS ON'); }
-      if (this.startAllT > 2.2 && fs.engine === 'off') { this.cranking = 0; fs.engine = 'starting'; this.startAllT = -1; }
+      if (fs.engine !== 'off') this.startAllT = -1;
+      else if (this.startAllT >= T.assistStep) { this.startAllT = 0; this.command(this.nextStartStep()); }
     }
     if (fs.engine === 'starting' && this.cranking >= 0) {
       this.cranking += dt;
       fs.rpm = 300 + Math.sin(this.cranking * 18) * 80;
-      if (this.cranking > TUNING.sortie.crankToCatch) {
-        if (this.primed && this.mags) {
-          fs.engine = 'running';
-          fs.events.push('cough');
-          this.prompts.push('SHE CATCHES!');
-          this.world.emit({ kind: 'engineStart', planeId: this.player.id }, false);
-        } else {
-          fs.engine = 'off';
-          fs.rpm = 0;
-          this.prompts.push(!this.primed ? 'NOT PRIMED - SHE WON\'T CATCH' : 'MAGNETOS ARE OFF');
-          this.world.emit({ kind: 'engineCough', planeId: this.player.id }, false);
-        }
+      if (this.cranking >= this.catchAt) {
+        fs.engine = 'running';
+        fs.events.push('cough');
+        this.lastStart = 'caught';
+        this.prompts.push('SHE CATCHES!');
+        this.world.emit({ kind: 'engineStart', planeId: this.player.id }, false);
+        this.cranking = -1;
+      } else if (this.cranking > T.crankToCatch) {
+        fs.engine = fs.onGround ? 'off' : 'dead';
+        fs.rpm = 0;
+        this.prompts.push({
+          mags: 'MAGNETOS ARE OFF', unprimed: this.strokes ? 'NOT ENOUGH PRIME - SHE WON\'T FIRE' : 'NOT PRIMED - SHE WON\'T FIRE', short: 'SHE COUGHS AND DIES - ANOTHER STROKE',
+          unlucky: 'SHE WON\'T CATCH - TRY AGAIN', flooded: 'FLOODED - KEEP CRANKING TO CLEAR HER', gone: 'NOTHING - SHE\'S HAD IT', none: '', caught: '',
+        }[this.lastStart]);
+        // Turning her over on the starter blows out the extra fuel.
+        if (this.lastStart === 'flooded') this.strokes = Math.max(this.primeNeed, this.strokes - 2);
+        if (this.lastStart !== 'mags' && this.lastStart !== 'unlucky') this.world.emit({ kind: 'engineCough', planeId: this.player.id }, false);
         this.cranking = -1;
       }
     }
